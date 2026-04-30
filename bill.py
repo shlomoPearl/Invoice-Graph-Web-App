@@ -1,5 +1,5 @@
 import re
-import PyPDF2
+import pypdf
 from io import BytesIO
 from bs4 import BeautifulSoup
 
@@ -53,7 +53,7 @@ class ReadBill:
                     pdf_data = BytesIO(data)
                     if not pdf_data.getvalue():
                         continue
-                    pdf_file = PyPDF2.PdfReader(pdf_data)
+                    pdf_file = pypdf.PdfReader(pdf_data)
                     if len(pdf_file.pages) == 0:
                         continue
                     for page in pdf_file.pages:
@@ -68,8 +68,8 @@ class ReadBill:
                                     amounts = self.extract_amounts_from_line(line, parse_key)
                                     page_total += sum(amounts)
                             bill_dict[date] += page_total
-                        except Exception:
-                            continue
+                        except Exception as e:
+                            print(f"Error processing {date}: {e}")
                 elif isinstance(data, str):
                     print("HTML")
                     soup = BeautifulSoup(data, "html.parser")
@@ -104,7 +104,7 @@ class ReadBill:
                             page_total += sum(amounts)
                         i += 1
                     bill_dict[date] += page_total
-            except Exception:
-                continue
+            except Exception as e:
+                print(f"Error processing {date}: {e}")
         print("bill dict-", bill_dict)
         return bill_dict
