@@ -31,7 +31,6 @@ def save_user_token(db: Session, user_id: str, email: str, token_dict: dict):
         )
         db.add(user)
     db.commit()
-    db.flush()
 
 
 def load_user_token(db: Session, user_id: str) -> dict | None:
@@ -45,8 +44,6 @@ def load_user_token(db: Session, user_id: str) -> dict | None:
         if row:
             row.last_accessed = datetime.now(timezone.utc)
             db.commit()
-            db.flush()
-
             try:
                 raw = decrypt_bytes(row.token)
                 token_dict = json.loads(raw.decode())
@@ -72,10 +69,6 @@ def create_session(db: Session, user_id: str) -> str:
     )
     db.add(session)
     db.commit()
-    db.flush()
-    verify = db.query(SessionToken).filter(
-        SessionToken.session_id == session_id
-    ).one_or_none()
     return session_id
 
 
@@ -111,7 +104,6 @@ def invalidate_session(db: Session, session_id: str):
         if session:
             session.is_active = False
             db.commit()
-            db.flush()
     except Exception as e:
         print(f"Error invalidating session: {e}")
         db.rollback()
@@ -123,7 +115,6 @@ def cleanup_expired_sessions(db: Session):
             SessionToken.expires_at < datetime.now(timezone.utc)
         ).delete()
         db.commit()
-        db.flush()
     except Exception as e:
         print(f"Error cleaning up sessions: {e}")
         db.rollback()
@@ -135,7 +126,6 @@ def cleanup_expired_tokens(db: Session):
             User.expires_at < datetime.now(timezone.utc)
         ).delete()
         db.commit()
-        db.flush()
     except Exception as e:
         print(f"Error cleaning up tokens: {e}")
         db.rollback()
