@@ -2,6 +2,7 @@ from fastapi import FastAPI, Form, Response, Request, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from googleapiclient.discovery import build
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
@@ -50,7 +51,7 @@ class FormData(BaseModel):
     end_date: str
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> str | None:
+async def get_current_user(request: Request, db: Session = Depends(get_db)) -> str | None:
     session_id = request.session.get("session_id")
     if not session_id:
         return None
@@ -60,15 +61,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> str | N
 
 @app.get("/", response_class=HTMLResponse)
 async def index_get(request: Request, db: Session = Depends(get_db)):
-    user_id = get_current_user(request, db)
-    if user_id:
-        return templates.TemplateResponse(
-            "index.html",
-            {"request": request, "logged_in": True, "user_id": user_id}
-        )
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "logged_in": False}
+        {"request": request}
     )
 
 
@@ -153,6 +148,8 @@ async def auth_callback(request: Request, code: str,
 @app.get("/process_after_oauth")
 async def process_after_oauth(request: Request, db: Session = Depends(get_db)):
     g_id = get_current_user(request, db)
+    if not g_id:
+        return RedirectResponse("/auth/login", status_code=303)
     token_dict = load_user_token(db, g_id)
     service = GmailAuth.get_service_from_token_dict(token_dict)
     form_data = request.session.get("pending_form_data")
@@ -201,13 +198,15 @@ def download_graph(request: Request, format: str):
     )
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    print("DB tables ready")
     db = SessionLocal()
     try:
         cleanup_expired_sessions(db)
         cleanup_expired_tokens(db)
     finally:
         db.close()
+    yield
+
+app = FastAPI(lifespan=lifespan)
