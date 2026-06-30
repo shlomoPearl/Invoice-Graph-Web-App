@@ -15,7 +15,18 @@ from storage import *
 
 load_dotenv()
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        cleanup_expired_sessions(db)
+        cleanup_expired_tokens(db)
+    finally:
+        db.close()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 KEY = os.getenv("KEY")
@@ -76,7 +87,7 @@ async def handle_form(request: Request,
                       currency: str = Form(...),
                       start_date: str = Form(...),
                       end_date: str = Form(...)):
-    g_id = get_current_user(request, db)
+    g_id = await get_current_user(request, db)
     if not all([email, start_date, end_date, currency]):
         raise HTTPException(status_code=400, detail="Missing required form fields.")
     form_data = {
@@ -147,7 +158,7 @@ async def auth_callback(request: Request, code: str,
 
 @app.get("/process_after_oauth")
 async def process_after_oauth(request: Request, db: Session = Depends(get_db)):
-    g_id = get_current_user(request, db)
+    g_id = await get_current_user(request, db)
     if not g_id:
         return RedirectResponse("/auth/login", status_code=303)
     token_dict = load_user_token(db, g_id)
@@ -198,15 +209,5 @@ def download_graph(request: Request, format: str):
     )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        cleanup_expired_sessions(db)
-        cleanup_expired_tokens(db)
-    finally:
-        db.close()
-    yield
 
-app = FastAPI(lifespan=lifespan)
+# app = FastAPI()

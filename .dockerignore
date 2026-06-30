@@ -6,3 +6,4 @@ node_modules
 .venv
 venv
 .pytest_cache
+.env
