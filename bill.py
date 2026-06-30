@@ -1,5 +1,5 @@
 import re
-import pypdf
+import PyPDF2
 from io import BytesIO
 from bs4 import BeautifulSoup
 
@@ -53,7 +53,7 @@ class ReadBill:
                     pdf_data = BytesIO(data)
                     if not pdf_data.getvalue():
                         continue
-                    pdf_file = pypdf.PdfReader(pdf_data)
+                    pdf_file = PyPDF2.PdfReader(pdf_data)
                     if len(pdf_file.pages) == 0:
                         continue
                     for page in pdf_file.pages:
