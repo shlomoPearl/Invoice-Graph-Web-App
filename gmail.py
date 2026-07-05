@@ -72,11 +72,10 @@ class Gmail:
                             break
                 if not found_pdf:
                     # Look for 'text/html' part
-                    html_data = None
                     if 'parts' in msg['payload']:
                         for part in msg['payload']['parts']:
                             if part.get('mimeType') == 'text/html':
-                                html_data = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                                data = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
                                 break
                     else:
                         if msg['payload'].get('mimeType') == 'text/html':
@@ -85,7 +84,6 @@ class Gmail:
                     date_attachment_dict[date].append(data)
                 elif data:
                     date_attachment_dict[date] = [data]
-            print(f"Length of Date-Attachment Dict: {len(date_attachment_dict)}")
             return date_attachment_dict
         except HttpError as error:
             print(f"An error occurred: {error}")

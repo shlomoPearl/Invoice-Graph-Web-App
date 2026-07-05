@@ -3,7 +3,6 @@ import PyPDF2
 from io import BytesIO
 from bs4 import BeautifulSoup
 from pdf2image import convert_from_bytes
-from plotly import data
 from layoutmlv3_model import LayoutModel
 
 
@@ -13,12 +12,12 @@ _TOTAL_QUESTIONS = [
 "What is the total amount due?",
 "What is the grand total?",
 "What is the final total?",
-"What is the amount?",]
+"What is the amount?"]
 _CATEGORY_QUESTION_TEMPLATES = [
     "What is the amount for {category}?",
     "How much is the {category} charge?",
     "What is the {category} fee?",
-    "What is the cost of {category}?",]
+    "What is the cost of {category}?"]
 
 
 def clean_amount_string(amount_str):
@@ -95,25 +94,7 @@ class ReadBill:
         return page_total
 
 
-    def _pdf_page_regex_fallback(self, data: bytes, page_index: int, parse_key: str | None = None) -> float:
-        try:
-            reader = PyPDF2.PdfReader(BytesIO(data))
-            if page_index >= len(reader.pages):
-                return 0.0
-            text = reader.pages[page_index].extract_text()
-            if not text or not text.strip():
-                return 0.0
-            return sum(
-                amt
-                for line in text.split('\n')
-                if line.strip()
-                for amt in self._extract_amounts_from_line(line, parse_key)
-            )
-        except Exception as e:
-            print(f"PyPDF2 fallback error on page {page_index}: {e}")
-            return 0.0
-
-    def _pdf_regex_all_pages(self, data: bytes, parse_key: str | None = None) -> float:
+    def _pdf_page_regex_fallback(self, data: bytes, parse_key: str | None = None) -> float:
         try:
             reader = PyPDF2.PdfReader(BytesIO(data))
             total = 0.0
@@ -129,42 +110,18 @@ class ReadBill:
                 )
             return total
         except Exception as e:
-            print(f"PyPDF2 all-pages error: {e}")
+            print(f"PyPDF2 fallback error: {e}")
             return 0.0
+        
+    def _html2text(self, html: str) -> str:
+        soup = BeautifulSoup(html, "html.parser")
+        return soup.get_text(separator='\n')
+    
+    def _pdf2text(self, pdf_bytes: bytes, i: int) -> str:
+        reader = PyPDF2.PdfReader(BytesIO(pdf_bytes))
+        return reader.pages[i].extract_text() if i < len(reader.pages) else ""
 
-   
-    def _parse_pdf(self, data: bytes, parse_key: str | None = None) -> float:
-        """PDF → image per page → LayoutLMv3 image mode → regex fallback per page."""
-        try:
-            images = convert_from_bytes(data, dpi=200)
-        except Exception as e:
-            print(f"pdf2image failed: {e}, falling back to regex")
-            return self._pdf_regex_all_pages(data, parse_key)
-
-        total = 0.0
-        for i, image in enumerate(images):
-            print(f"PDF page {i+1} → LayoutLMv3 image-mode (category: {parse_key or 'total'})")
-            amounts = self.ML_model.ask_layoutlm_image(image)
-            best_amount = None
-            best_score = 0.0
-            for answer, score in amounts:
-                if score > _CONFIDENCE_THRESHOLD and score > best_score:
-                    amount = extract_amount_from_answer(answer)
-                    if amount is not None:
-                        best_amount = amount
-                        best_score = score
-            if best_amount is not None:
-                print(f"extracted: {best_amount}")
-                total += best_amount
-            else:
-                print(f"not confident, falling back to regex")
-                total += self._pdf_page_regex_fallback(data, i, parse_key)
-        return total
-
-    def _parse_html(self, data: str, parse_key: str | None = None) -> float:
-        print(f"HTML → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
-        soup = BeautifulSoup(data, "html.parser")
-        text = soup.get_text(separator=' ')
+    def _get_amount_from_text(self, text: str) ->float:
         amounts = self.ML_model.ask_layoutlm_text(text)
         best_amount = None
         best_score = 0.0
@@ -174,6 +131,33 @@ class ReadBill:
                 if amount is not None:
                     best_amount = amount
                     best_score = score
+        return best_amount if best_amount is not None else 0.0
+            
+    def _parse_pdf(self, data: bytes, parse_key: str | None = None) -> float:
+        """PDF → text → LayoutLMv3 text mode → regex fallback per page."""
+        try:
+            images = convert_from_bytes(data, dpi=200)
+        except Exception as e:
+            print(f"pdf2image failed: {e}, falling back to regex")
+            return self._pdf_page_regex_fallback(data, parse_key)
+
+        total = 0.0
+        for i in range(len(images)):
+            print(f"PDF page {i+1} → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
+            text = self._pdf2text(data, i)
+            best_amount = self._get_amount_from_text(text)
+            if best_amount is not None:
+                print(f"extracted: {best_amount}")
+                total += best_amount
+            else:
+                print(f"not confident, falling back to regex")
+                total += self._pdf_page_regex_fallback(data, parse_key)
+        return total
+
+    def _parse_html(self, data: str, parse_key: str | None = None) -> float:
+        print(f"HTML → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
+        text = self._html2text(data)
+        best_amount = self._get_amount_from_text(text)
         if best_amount is not None:
             print(f"extracted: {best_amount}")
             return best_amount
