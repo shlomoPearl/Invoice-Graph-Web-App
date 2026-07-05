@@ -14,7 +14,8 @@ _SHORT_MONTH_NAMES = {name[:3]: num for name, num in _MONTH_NAMES.items() if len
 
 def parse_date(date_str: str) -> str | None:
     """
-    Parse a date string and return it in the format:
+    Parse a date string and return it in the format 'mm/yyyy'.
+    Supports the following formats:
     -'Month Year'
     -'yyyy/mm/dd'
     -'mm/dd/yyyy'
