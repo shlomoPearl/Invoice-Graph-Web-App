@@ -23,7 +23,7 @@ def make_word_boxes(words: list[str]) -> list:
 
 
 class LayoutModel:
-    def __init__(self, threshold: float = 0.5, questions: list[str] | None = None, parse_key: str | None = None):
+    def __init__(self, threshold: float = 0.5, questions: list[str] | None = None, date_questions: list[str] | None = None, parse_key: str | None = None):
         print("Loading LayoutLMv3 model...")
         self._qa_pipeline = pipeline(
             "document-question-answering",
@@ -37,6 +37,12 @@ class LayoutModel:
             "What is the grand total?",
             "What is the final total?",
             "What is the amount?"
+        ]
+        self.date_questions = date_questions or [
+            "What is the invoice date?",
+        "What is the billing date?",
+        "What is the order date?",
+        "What is the date?"
         ]
         self._parse_key = parse_key
 
@@ -82,15 +88,26 @@ class LayoutModel:
         word_boxes = make_word_boxes(words)
 
         questions = self.build_questions()
-        res = []
+        amount_res = []
+        date_res = []
         for question in questions:
             try:
-                results = self._qa_pipeline({"question": question, "word_boxes": word_boxes})
-                top = results[0] if isinstance(results, list) else results
+                amount_results = self._qa_pipeline({"question": question, "word_boxes": word_boxes})
+                top = amount_results[0] if isinstance(amount_results, list) else amount_results
                 score = top.get("score", 0.0)
                 answer = top.get("answer", "")
                 print(f"  Q: '{question}' → A: '{answer}' (score {score:.6f})")
-                res.append((answer, score))
+                amount_res.append((answer, score))
             except Exception as e:
                 print(f"LayoutLMv3 text-mode error on '{question}': {e}")
-        return res
+        for question in self.date_questions:
+            try:
+                date_results = self._qa_pipeline({"question": question, "word_boxes": word_boxes})
+                top = date_results[0] if isinstance(date_results, list) else date_results
+                score = top.get("score", 0.0)
+                answer = top.get("answer", "")
+                print(f"  Q: '{question}' → A: '{answer}' (score {score:.6f})")
+                date_res.append((answer, score))
+            except Exception as e:
+                print(f"LayoutLMv3 text-mode error on DateQ'{question}': {e}")
+        return amount_res, date_res
