@@ -3,24 +3,16 @@ import PyPDF2
 from io import BytesIO
 from bs4 import BeautifulSoup
 from pdf2image import convert_from_bytes
-from transformers import pipeline
-from PIL import Image
+from layoutmlv3_model import LayoutModel
 
-
-print("Loading LayoutLMv3 model...")
-_qa_pipeline = pipeline(
-    "document-question-answering",
-    model="impira/layoutlm-document-qa",
-    device=-1)
-print("Model loaded.")
 
 _CONFIDENCE_THRESHOLD = 0.5
 _TOTAL_QUESTIONS = [
-    "What is the total amount to pay?",
-    "What is the total amount due?",
-    "What is the grand total?",
-    "What is the final total?",
-    "What is the amount?",]
+"What is the total amount to pay?",
+"What is the total amount due?",
+"What is the grand total?",
+"What is the final total?",
+"What is the amount?",]
 _CATEGORY_QUESTION_TEMPLATES = [
     "What is the amount for {category}?",
     "How much is the {category} charge?",
@@ -47,94 +39,12 @@ def extract_amount_from_answer(answer_str: str) -> float | None:
     return clean_amount_string(cleaned)
 
 
-def build_questions(parse_key: str | None) -> list[str]:
-    if not parse_key or parse_key.strip().lower() in ("total", ""):
-        return _TOTAL_QUESTIONS
-    return [t.format(category=parse_key) for t in _CATEGORY_QUESTION_TEMPLATES]
-
-
-def make_word_boxes(words: list[str]) -> list:
-    """
-    Assign sequential fake positions to words so the model's spatial
-    attention has meaningful layout to work with.
-    Simulates words flowing left-to-right, wrapping at page_width=1000.
-    """
-    boxes = []
-    x, y = 0, 0
-    w, h = 50, 20      # approximate word width/height
-    page_width = 1000
-    for word in words:
-        x1 = min(x + w, page_width)
-        boxes.append([word, [x, y, x1, y + h]])
-        x += w + 10
-        if x >= page_width:
-            x = 0
-            y += h + 5
-    return boxes
-
-
-def ask_layoutlm_image(image: Image.Image, parse_key: str | None = None) -> float | None:
-    """
-    PDF path: run document-QA on a PIL image.
-    LayoutLMv3 uses the visual layout + embedded text to find amounts.
-    Returns the best confident amount, or None if nothing passes the threshold.
-    """
-    questions = build_questions(parse_key)
-    best_amount = None
-    best_score = 0.0
-    for question in questions:
-        try:
-            results = _qa_pipeline(image, question)
-            top = results[0] if isinstance(results, list) else results
-            score = top.get("score", 0.0)
-            answer = top.get("answer", "")
-            print(f"  Q: '{question}' → A: '{answer}' (score {score:.2f})")
-            if score >= _CONFIDENCE_THRESHOLD and score > best_score:
-                amount = extract_amount_from_answer(answer)
-                if amount is not None:
-                    best_amount = amount
-                    best_score = score
-        except Exception as e:
-            print(f"LayoutLMv3 image-mode error on '{question}': {e}")
-    return best_amount
-
-
-def ask_layoutlm_text(text: str, parse_key: str | None = None) -> float | None:
-    """
-    HTML path: feed plain text directly with dummy bounding boxes.
-    Avoids image rendering and OCR entirely — HTML is already clean text.
-    word_boxes format: [[word, [x0, y0, x1, y1]], ...] with coords 0-1000.
-    Dummy coords are fine here since we care about content not layout.
-    """
-    words = text.split()
-    if not words:
-        return None
-    word_boxes = make_word_boxes(words)
-
-    questions = build_questions(parse_key)
-    best_amount = None
-    best_score = 0.0
-    for question in questions:
-        try:
-            results = _qa_pipeline({"question": question, "word_boxes": word_boxes})
-            top = results[0] if isinstance(results, list) else results
-            score = top.get("score", 0.0)
-            answer = top.get("answer", "")
-            print(f"  Q: '{question}' → A: '{answer}' (score {score:.6f})")
-            if score > _CONFIDENCE_THRESHOLD and score > best_score:
-                amount = extract_amount_from_answer(answer)
-                if amount is not None:
-                    best_amount = amount
-                    best_score = score
-        except Exception as e:
-            print(f"LayoutLMv3 text-mode error on '{question}': {e}")
-    return best_amount
-
-
 class ReadBill:
-    def __init__(self, date_data_dict: dict, currency_symbols):
+    def __init__(self, date_data_dict: dict, currency_symbols, parse_key: str | None = None):
         self.date_data_dict = date_data_dict
         self.currency_symbols = currency_symbols
+        self.parse_key = parse_key
+        self.ML_model = LayoutModel(parse_key=parse_key, threshold=_CONFIDENCE_THRESHOLD, questions= _CATEGORY_QUESTION_TEMPLATES if parse_key else _TOTAL_QUESTIONS)
 
     
     def _extract_amounts_from_line(self, line: str, parse_key: str | None = None) -> list[float]:
@@ -233,10 +143,18 @@ class ReadBill:
         total = 0.0
         for i, image in enumerate(images):
             print(f"PDF page {i+1} → LayoutLMv3 image-mode (category: {parse_key or 'total'})")
-            amount = ask_layoutlm_image(image, parse_key)
-            if amount is not None:
-                print(f"extracted: {amount}")
-                total += amount
+            amounts = self.ML_model.ask_layoutlm_image(image)
+            best_amount = None
+            best_score = 0.0
+            for answer, score in amounts:
+                if score > _CONFIDENCE_THRESHOLD and score > best_score:
+                    amount = extract_amount_from_answer(answer)
+                    if amount is not None:
+                        best_amount = amount
+                        best_score = score
+            if best_amount is not None:
+                print(f"extracted: {best_amount}")
+                total += best_amount
             else:
                 print(f"not confident, falling back to regex")
                 total += self._pdf_page_regex_fallback(data, i, parse_key)
@@ -246,23 +164,30 @@ class ReadBill:
         print(f"HTML → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
         soup = BeautifulSoup(data, "html.parser")
         text = soup.get_text(separator=' ')
-        amount = ask_layoutlm_text(text, parse_key)
-        if amount is not None:
-            print(f"extracted: {amount}")
-            return amount
+        amounts = self.ML_model.ask_layoutlm_text(text)
+        best_amount = None
+        best_score = 0.0
+        for answer, score in amounts:
+            if score > _CONFIDENCE_THRESHOLD and score > best_score:
+                amount = extract_amount_from_answer(answer)
+                if amount is not None:
+                    best_amount = amount
+                    best_score = score
+        if best_amount is not None:
+            print(f"extracted: {best_amount}")
+            return best_amount
         print("not confident, falling back to regex")
         return self._html_regex_fallback(data, parse_key)
 
 
-    def parser(self, parse_key: str | None = None) -> dict:
+    def parser(self) -> dict:
         bill_dict = {}
         for date, data in self.date_data_dict.items():
-            bill_dict[date] = 0.0
             try:
                 if isinstance(data, bytes):
-                    bill_dict[date] = self._parse_pdf(data, parse_key)
+                    bill_dict[date] = bill_dict[date].get(date, 0.0) + self._parse_pdf(data, self.parse_key)
                 elif isinstance(data, str):
-                    bill_dict[date] = self._parse_html(data, parse_key)
+                    bill_dict[date] = bill_dict.get(date, 0.0) + self._parse_html(data, self.parse_key)
             except Exception as e:
                 print(f"Error processing {date}: {e}")
         print("bill dict-", bill_dict)
