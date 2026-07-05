@@ -187,7 +187,7 @@ class ReadBill:
             for data in data_list:
                 try:
                     if isinstance(data, bytes):
-                        bill_dict[date] = bill_dict[date].get(date, 0.0) + self._parse_pdf(data, self.parse_key)
+                        bill_dict[date] = bill_dict.get(date, 0.0) + self._parse_pdf(data, self.parse_key)
                     elif isinstance(data, str):
                         bill_dict[date] = bill_dict.get(date, 0.0) + self._parse_html(data, self.parse_key)
                 except Exception as e:

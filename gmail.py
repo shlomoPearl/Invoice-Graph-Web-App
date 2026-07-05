@@ -60,6 +60,7 @@ class Gmail:
                         date = decrement_date(date_time_list)
                         break
                 found_pdf = False
+                data = None
                 if 'parts' in msg['payload']:
                     for part in msg['payload']['parts']:
                         if part.get('filename', '').endswith('.pdf'):
@@ -67,7 +68,6 @@ class Gmail:
                             attachment = service.users().messages().attachments() \
                                 .get(userId='me', messageId=message['id'], id=attachment_data).execute()
                             data = base64.urlsafe_b64decode(attachment['data'].encode('UTF-8'))
-                            date_attachment_dict[date] = data
                             found_pdf = True
                             break
                 if not found_pdf:
@@ -80,12 +80,11 @@ class Gmail:
                                 break
                     else:
                         if msg['payload'].get('mimeType') == 'text/html':
-                            html_data = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
-                    if html_data and date:
-                        if date in date_attachment_dict:
-                            date_attachment_dict[date].append(html_data)
-                        else:
-                            date_attachment_dict[date] = [html_data]
+                            data = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
+                if data and date in date_attachment_dict:
+                    date_attachment_dict[date].append(data)
+                elif data:
+                    date_attachment_dict[date] = [data]
             print(f"Length of Date-Attachment Dict: {len(date_attachment_dict)}")
             return date_attachment_dict
         except HttpError as error:
