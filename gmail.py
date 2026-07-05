@@ -3,34 +3,7 @@ import base64
 from datetime import datetime
 from googleapiclient.errors import HttpError
 from sqlalchemy.util import defaultdict
-
-
-# Convert date from dd/mm/yyyy format to yyyy/mm/dd format with month +1
-def increment_date(date_str):
-    date_obj = datetime.strptime(date_str, '%d/%m/%Y')
-    month = date_obj.month + 1
-    year = date_obj.year
-    day = date_obj.day
-    if month > 12:
-        month = 1
-        year += 1
-    return f"{year:04d}/{month:02d}/{day:02d}"
-
-
-# Extract date from list format and return as mm/yyyy with month -1
-def decrement_date(date_list):
-    month_name = date_list[2]
-    year = date_list[3]
-    month_dict = {
-        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
-    }
-    month_num = month_dict[month_name] - 1
-    year_num = int(year)
-    if month_num < 1:
-        month_num = 12
-        year_num -= 1
-    return f"{month_num:02d}/{year_num}"
+from date_op import get_date, increment_date, decrement_date
 
 
 class Gmail:
@@ -44,7 +17,7 @@ class Gmail:
         query_parts = [f"from:{self.address}"]
         if self.subject:
             query_parts.append(f"subject:{self.subject}")
-        query_parts.append(f"after:{increment_date(self.date_range[0])}")
+        query_parts.append(f"after:{self.date_range[0]}")
         query_parts.append(f"before:{increment_date(self.date_range[1])}")
         query = " ".join(query_parts)
         print(f"Query: {query}")
@@ -57,7 +30,7 @@ class Gmail:
                 for header in msg['payload']['headers']:
                     if header['name'] == 'Date':
                         date_time_list = header['value'].split(' ')
-                        date = decrement_date(date_time_list)
+                        date = get_date(date_time_list)
                         break
                 found_pdf = False
                 data = None
