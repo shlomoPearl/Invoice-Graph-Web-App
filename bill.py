@@ -3,6 +3,7 @@ import PyPDF2
 from io import BytesIO
 from bs4 import BeautifulSoup
 from pdf2image import convert_from_bytes
+from plotly import data
 from layoutmlv3_model import LayoutModel
 
 
@@ -182,13 +183,14 @@ class ReadBill:
 
     def parser(self) -> dict:
         bill_dict = {}
-        for date, data in self.date_data_dict.items():
-            try:
-                if isinstance(data, bytes):
-                    bill_dict[date] = bill_dict[date].get(date, 0.0) + self._parse_pdf(data, self.parse_key)
-                elif isinstance(data, str):
-                    bill_dict[date] = bill_dict.get(date, 0.0) + self._parse_html(data, self.parse_key)
-            except Exception as e:
-                print(f"Error processing {date}: {e}")
+        for date, data_list in self.date_data_dict.items():
+            for data in data_list:
+                try:
+                    if isinstance(data, bytes):
+                        bill_dict[date] = bill_dict[date].get(date, 0.0) + self._parse_pdf(data, self.parse_key)
+                    elif isinstance(data, str):
+                        bill_dict[date] = bill_dict.get(date, 0.0) + self._parse_html(data, self.parse_key)
+                except Exception as e:
+                    print(f"Error processing {date}: {e}")
         print("bill dict-", bill_dict)
         return bill_dict

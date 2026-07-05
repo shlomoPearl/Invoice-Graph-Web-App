@@ -2,6 +2,7 @@ from __future__ import print_function
 import base64
 from datetime import datetime
 from googleapiclient.errors import HttpError
+from sqlalchemy.util import defaultdict
 
 
 # Convert date from dd/mm/yyyy format to yyyy/mm/dd format with month +1
@@ -46,10 +47,10 @@ class Gmail:
         query_parts.append(f"after:{increment_date(self.date_range[0])}")
         query_parts.append(f"before:{increment_date(self.date_range[1])}")
         query = " ".join(query_parts)
-        print(query)
+        print(f"Query: {query}")
         try:
             results = service.users().messages().list(userId="me", maxResults=self.result_num, q=query).execute()
-            date_attachment_dict = {}
+            date_attachment_dict = defaultdict(list)
             for message in results.get('messages', []):
                 msg = service.users().messages().get(userId='me', id=message['id']).execute()
                 date = None
@@ -58,7 +59,6 @@ class Gmail:
                         date_time_list = header['value'].split(' ')
                         date = decrement_date(date_time_list)
                         break
-
                 found_pdf = False
                 if 'parts' in msg['payload']:
                     for part in msg['payload']['parts']:
@@ -82,7 +82,11 @@ class Gmail:
                         if msg['payload'].get('mimeType') == 'text/html':
                             html_data = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
                     if html_data and date:
-                        date_attachment_dict[date] = html_data
+                        if date in date_attachment_dict:
+                            date_attachment_dict[date].append(html_data)
+                        else:
+                            date_attachment_dict[date] = [html_data]
+            print(f"Length of Date-Attachment Dict: {len(date_attachment_dict)}")
             return date_attachment_dict
         except HttpError as error:
             print(f"An error occurred: {error}")
