@@ -5,14 +5,13 @@ from bs4 import BeautifulSoup
 from pdf2image import convert_from_bytes
 from transformers import pipeline
 from PIL import Image
-import torch
 
 
 print("Loading LayoutLMv3 model...")
 _qa_pipeline = pipeline(
     "document-question-answering",
     model="impira/layoutlm-document-qa",
-    device=0 if torch.cuda.is_available() else -1)
+    device=-1)
 print("Model loaded.")
 
 _CONFIDENCE_THRESHOLD = 0.5
