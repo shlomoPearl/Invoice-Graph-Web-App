@@ -60,7 +60,8 @@ class LayoutModel:
         Returns the best confident amount, or None if nothing passes the threshold.
         """
         questions = self.build_questions()
-        res = []
+        amount_res = []
+        date_res = []
         for question in questions:
             try:
                 results = self._qa_pipeline(image, question)
@@ -68,12 +69,23 @@ class LayoutModel:
                 score = top.get("score", 0.0)
                 answer = top.get("answer", "")
                 print(f"  Q: '{question}' → A: '{answer}' (score {score:.6f})")
-                res.append((answer, score))
+                amount_res.append((answer, score))
             except Exception as e:
                 # if "OCR" not in str(e):
                 print(f"LayoutLMv3 image-mode error on '{question}': {e}")
-        return res
-    
+        for question in self.date_questions:
+            try:
+                results = self._qa_pipeline(image, question)
+                top = results[0] if isinstance(results, list) else results
+                score = top.get("score", 0.0)
+                answer = top.get("answer", "")
+                print(f"  Q: '{question}' → A: '{answer}' (score {score:.6f})")
+                date_res.append((answer, score))
+            except Exception as e:
+                # if "OCR" not in str(e):
+                print(f"LayoutLMv3 image-mode error on DateQ'{question}': {e}")
+        return amount_res, date_res
+
 
     def ask_layoutlm_text(self, text: str) -> float | None:
         """
