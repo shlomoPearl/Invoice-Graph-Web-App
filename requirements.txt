@@ -1,4 +1,4 @@
-PyPDF2==3.0.1
+pypdf==3.16.0
 python-dotenv==1.2.1
 beautifulsoup4==4.14.2
 pydantic~=2.12.4
