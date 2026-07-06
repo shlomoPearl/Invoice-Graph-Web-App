@@ -2,9 +2,8 @@ import re
 from io import BytesIO
 from bs4 import BeautifulSoup
 from pdf2image import convert_from_bytes
-import pypdf
-from date_op import parse_date
-from date_op import parse_date
+import pdfplumber
+from date_op import date_in_range, parse_date
 from layoutmlv3_model import LayoutModel
 
 
@@ -21,8 +20,8 @@ _CATEGORY_QUESTION_TEMPLATES = [
     "What is the {category} fee?",
     "What is the cost of {category}?"]
 _DATE_QUESTIONS = [
-    "What is the invoice date?",
-    "What date is this invoice for??",
+    "What is the invoice date in format of mm/yy?",
+    "What date is this invoice for?",
     "What month is this receipt for?"]
 
 
@@ -46,10 +45,11 @@ def extract_amount_from_answer(answer_str: str) -> float | None:
 
 
 class ReadBill:
-    def __init__(self, date_data_dict: dict, currency_symbols, parse_key: str | None = None):
-        self.date_data_dict = date_data_dict
+    def __init__(self, date_data_dict: dict, currency_symbols, range: list[str], parse_key: str | None = None):
+        self.date_data_dict = date_data_dict        
         self.currency_symbols = currency_symbols
         self.parse_key = parse_key
+        self.range = range
         self.ML_model = LayoutModel(parse_key=parse_key, threshold=_CONFIDENCE_THRESHOLD, questions= _CATEGORY_QUESTION_TEMPLATES if parse_key else _TOTAL_QUESTIONS, date_questions=_DATE_QUESTIONS)
 
     
@@ -103,7 +103,7 @@ class ReadBill:
 
     def _pdf_page_regex_fallback(self, data: bytes, parse_key: str | None = None) -> float:
         try:
-            reader = pypdf.PdfReader(BytesIO(data))
+            reader = pdfplumber.open(BytesIO(data))
             total = 0.0
             for page in reader.pages:
                 text = page.extract_text()
@@ -125,7 +125,7 @@ class ReadBill:
         return soup.get_text(separator='\n')
     
     def _pdf2text(self, pdf_bytes: bytes, i: int) -> str:
-        reader = pypdf.PdfReader(BytesIO(pdf_bytes))
+        reader = pdfplumber.open(BytesIO(pdf_bytes))
         return reader.pages[i].extract_text() if i < len(reader.pages) else ""
 
     def _get_amount_from_text(self, text: str) ->float:
@@ -158,6 +158,7 @@ class ReadBill:
         for i in range(len(images)):
             print(f"PDF page {i+1} → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
             text = self._pdf2text(data, i)
+            print(f"Extracted text from PDF page {i+1}:\n{text}")
             best_amount, best_date = self._get_amount_from_text(text)
             best_date = parse_date(best_date)
             if best_amount is not None:
@@ -188,14 +189,15 @@ class ReadBill:
                     if isinstance(data, bytes):
                         current_total, extracted_date = self._parse_pdf(data, self.parse_key)
                         print(f"Processed PDF for date {date}, current total: {current_total}, extracted date: {extracted_date}")
-                        if extracted_date is not None:
+                        print(f"Date range: {self.range[0]} to {self.range[1]}")
+                        if extracted_date is not None and date_in_range(extracted_date, self.range[0], self.range[1]):
                             bill_dict[extracted_date] = bill_dict.get(extracted_date, 0.0) + current_total
                         else:
                             bill_dict[date] = bill_dict.get(date, 0.0) + current_total
                         print(f"Processed PDF for date {date}, current total: {bill_dict[date]}")
                     elif isinstance(data, str):
                         current_total, extracted_date = self._parse_html(data, self.parse_key)
-                        if extracted_date is not None:
+                        if extracted_date is not None and date_in_range(extracted_date, self.range[0], self.range[1]):
                             bill_dict[extracted_date] = bill_dict.get(extracted_date, 0.0) + current_total
                         else:
                             bill_dict[date] = bill_dict.get(date, 0.0) + current_total
