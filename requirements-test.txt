@@ -1,0 +1,11 @@
+pytest
+pytest-mock
+pytest-cov
+httpx
+cryptography
+python-dotenv
+beautifulsoup4
+PyPDF2
+pdf2image
+reportlab
+testcontainers[postgres]
