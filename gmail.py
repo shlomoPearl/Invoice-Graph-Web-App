@@ -1,9 +1,8 @@
 from __future__ import print_function
 import base64
-from datetime import datetime
 from googleapiclient.errors import HttpError
 from sqlalchemy.util import defaultdict
-from date_op import get_date, increment_date, decrement_date
+from date_op import get_date, increment_date
 
 
 class Gmail:
