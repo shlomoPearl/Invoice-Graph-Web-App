@@ -5,7 +5,7 @@ httpx
 cryptography
 python-dotenv
 beautifulsoup4
-PyPDF2
+pypdf
 pdf2image
 reportlab
 testcontainers[postgres]

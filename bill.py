@@ -1,5 +1,4 @@
 import re
-import PyPDF2
 from io import BytesIO
 from bs4 import BeautifulSoup
 from pdf2image import convert_from_bytes
