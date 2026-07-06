@@ -177,7 +177,7 @@ async def process_flow(request: Request, service: build, form_data: dict):
             date_range=[form_data["start_date"], form_data["end_date"]],
         )
         attachments = gmail_client.search_mail(service)
-        bill_reader = ReadBill(attachments, form_data["currency"], parse_key=form_data.get("keyword"))
+        bill_reader = ReadBill(attachments, form_data["currency"], parse_key=form_data.get("keyword"), range=[form_data["start_date"], form_data["end_date"]])
         bill_dict = bill_reader.parser()
         request.session["bill_dict"] = bill_dict
         # if I add title option save it in session to
