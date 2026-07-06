@@ -1,5 +1,5 @@
 import pytest
-from date_op import parse_date, increment_date, decrement_date, get_date
+from date_op import date_in_range, parse_date, increment_date, decrement_date, get_date
 
 
 class TestParseDate:
@@ -77,4 +77,18 @@ class TestGetDate:
 
     def test_unknown_month_name_returns_zero_month(self):
         date_list = ["15", "Notamonth", "2024"]
-        assert get_date(date_list) == "00/2024"
+        assert get_date(date_list) == None
+
+class TestRangeDate:
+    def test_date_in_range(self):
+        assert date_in_range("03/2024", "01/2024", "12/2024") == True
+        assert date_in_range("01/2024", "01/2024", "12/2024") == True
+        assert date_in_range("12/2024", "01/2024", "12/2024") == True
+
+    def test_date_out_of_range_before(self):
+        assert date_in_range("12/2023", "01/2024", "12/2024") == False
+        assert date_in_range("08/2024", "09/2024", "12/2024") == False
+
+    def test_date_out_of_range_after(self):
+        assert date_in_range("01/2025", "01/2024", "12/2024") == False
+        assert date_in_range("09/2024", "01/2024", "08/2024") == False

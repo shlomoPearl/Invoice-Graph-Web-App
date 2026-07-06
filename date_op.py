@@ -9,7 +9,6 @@ _MONTH_NAMES = {
     'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
     'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
 }
-_SHORT_MONTH_NAMES = {name[:3]: num for name, num in _MONTH_NAMES.items() if len(name) > 3}
 
 
 def validate_day_by_month(day: int, month: int) -> bool:
@@ -31,6 +30,16 @@ def build_result(month: int, year: int, day: int | None = None) -> str:
         print(f"Invalid date components - Year: {year}, Month: {month}, Day: {day}")
         return None
     return f"{month:02d}/{year}"
+
+def date_in_range(date_str: str, start_date: str, end_date: str) -> bool:
+    try:
+        date_obj = datetime.strptime(date_str, '%m/%Y')
+        start_obj = datetime.strptime(start_date, '%m/%Y')
+        end_obj = datetime.strptime(end_date, '%m/%Y')
+        return start_obj <= date_obj <= end_obj
+    except ValueError as e:
+        print(f"Error parsing dates: {e}")
+        return False
 
 def parse_date(date_str: str) -> str | None:
     """
@@ -118,8 +127,12 @@ def decrement_date(date_list):
     return f"{month_num:02d}/{year_num}"
 
 def get_date(date_list):
-    month_name = date_list[1]
-    month_num = _MONTH_NAMES.get(month_name.lower(), 0)
-    year = date_list[2]
-    year_num = int(year)
-    return f"{month_num:02d}/{year_num}"
+    for i, part in enumerate(date_list):
+        if _MONTH_NAMES.get(part.lower()):
+            month_name = part
+            month_num = _MONTH_NAMES[month_name.lower()]
+            if i + 1 < len(date_list):
+                year = date_list[i + 1]
+                year_num = int(year)
+                return f"{month_num:02d}/{year_num}"
+    return None
