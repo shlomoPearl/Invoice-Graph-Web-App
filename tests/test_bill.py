@@ -1,12 +1,3 @@
-"""
-Unit tests for bill.py
-
-Only exercises the pure/regex-based helpers. ReadBill.__init__ normally
-constructs a LayoutModel (which loads a real HF pipeline), so instances here
-are built via object.__new__ to bypass __init__ entirely -- these tests
-should never touch the ML model. See test_bill_integration.py for tests that
-exercise ReadBill.parser() end-to-end with a mocked LayoutModel.
-"""
 import pytest
 from bill import (
     ReadBill,
@@ -55,12 +46,6 @@ class TestExtractAmountFromAnswer:
         assert extract_amount_from_answer("Total: 250.00 USD") == 250.0
 
     def test_stray_digits_elsewhere_in_string_corrupt_the_amount(self):
-        # KNOWN ISSUE: extract_amount_from_answer strips all non [\d,.]
-        # characters and then parses whatever's left as one number. Any
-        # stray digit anywhere in the string (e.g. a page number, invoice
-        # ID, or year folded into the answer text) gets concatenated into
-        # the amount rather than discarded. This test documents that
-        # behavior as a regression guard, and flags it as worth hardening.
         assert extract_amount_from_answer("Total 250.00 (page 2)") == 250.002
 
     def test_none_input(self):

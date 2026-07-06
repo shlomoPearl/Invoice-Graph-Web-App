@@ -1,9 +1,3 @@
-"""
-Unit tests for crypto.py
-
-conftest.py sets a valid ENC_KEY env var before this module (or crypto.py)
-is imported anywhere in the session.
-"""
 import pytest
 from cryptography.fernet import InvalidToken
 import crypto
@@ -50,15 +44,12 @@ class TestDecryptFailureModes:
 
 class TestMissingKeyAtImport:
     def test_missing_enc_key_raises_runtime_error(self, monkeypatch):
-        # Verify the module-level guard behavior in isolation, without
-        # disturbing the already-imported `crypto` module used elsewhere.
         import importlib
         import sys
 
         monkeypatch.delenv("ENC_KEY", raising=False)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **kw: None)
         sys.modules.pop("crypto", None)
         with pytest.raises(RuntimeError, match="ENC_KEY missing"):
             importlib.import_module("crypto")
-
-        # restore for any tests that run after this one in the same session
         sys.modules.pop("crypto", None)
