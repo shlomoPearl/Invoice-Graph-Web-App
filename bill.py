@@ -3,6 +3,9 @@ import PyPDF2
 from io import BytesIO
 from bs4 import BeautifulSoup
 from pdf2image import convert_from_bytes
+import pypdf
+from date_op import parse_date
+from date_op import parse_date
 from layoutmlv3_model import LayoutModel
 
 
@@ -14,10 +17,14 @@ _TOTAL_QUESTIONS = [
 "What is the final total?",
 "What is the amount?"]
 _CATEGORY_QUESTION_TEMPLATES = [
-    "What is the amount for {category}?",
+    "What is the amount paid for {category}?",
     "How much is the {category} charge?",
     "What is the {category} fee?",
     "What is the cost of {category}?"]
+_DATE_QUESTIONS = [
+    "What is the invoice date?",
+    "What date is this invoice for??",
+    "What month is this receipt for?"]
 
 
 def clean_amount_string(amount_str):
@@ -44,7 +51,7 @@ class ReadBill:
         self.date_data_dict = date_data_dict
         self.currency_symbols = currency_symbols
         self.parse_key = parse_key
-        self.ML_model = LayoutModel(parse_key=parse_key, threshold=_CONFIDENCE_THRESHOLD, questions= _CATEGORY_QUESTION_TEMPLATES if parse_key else _TOTAL_QUESTIONS)
+        self.ML_model = LayoutModel(parse_key=parse_key, threshold=_CONFIDENCE_THRESHOLD, questions= _CATEGORY_QUESTION_TEMPLATES if parse_key else _TOTAL_QUESTIONS, date_questions=_DATE_QUESTIONS)
 
     
     def _extract_amounts_from_line(self, line: str, parse_key: str | None = None) -> list[float]:
@@ -57,6 +64,7 @@ class ReadBill:
             amt = clean_amount_string(match.group(2) or match.group(3))
             if amt is not None:
                 amounts.append(amt)
+        print(f"Extracted amounts from line '{line}': {amounts}")
         return amounts
 
 
@@ -96,7 +104,7 @@ class ReadBill:
 
     def _pdf_page_regex_fallback(self, data: bytes, parse_key: str | None = None) -> float:
         try:
-            reader = PyPDF2.PdfReader(BytesIO(data))
+            reader = pypdf.PdfReader(BytesIO(data))
             total = 0.0
             for page in reader.pages:
                 text = page.extract_text()
@@ -118,11 +126,11 @@ class ReadBill:
         return soup.get_text(separator='\n')
     
     def _pdf2text(self, pdf_bytes: bytes, i: int) -> str:
-        reader = PyPDF2.PdfReader(BytesIO(pdf_bytes))
+        reader = pypdf.PdfReader(BytesIO(pdf_bytes))
         return reader.pages[i].extract_text() if i < len(reader.pages) else ""
 
     def _get_amount_from_text(self, text: str) ->float:
-        amounts = self.ML_model.ask_layoutlm_text(text)
+        amounts, dates = self.ML_model.ask_layoutlm_text(text)
         best_amount = None
         best_score = 0.0
         for answer, score in amounts:
@@ -131,7 +139,13 @@ class ReadBill:
                 if amount is not None:
                     best_amount = amount
                     best_score = score
-        return best_amount if best_amount is not None else 0.0
+        best_date = None
+        best_date_score = 0.0   
+        for answer, score in dates:
+            if score > _CONFIDENCE_THRESHOLD and score > best_date_score:
+                best_date = answer
+                best_date_score = score 
+        return best_amount, best_date
             
     def _parse_pdf(self, data: bytes, parse_key: str | None = None) -> float:
         """PDF → text → LayoutLMv3 text mode → regex fallback per page."""
@@ -140,27 +154,29 @@ class ReadBill:
         except Exception as e:
             print(f"pdf2image failed: {e}, falling back to regex")
             return self._pdf_page_regex_fallback(data, parse_key)
-
         total = 0.0
+        best_date = None
         for i in range(len(images)):
             print(f"PDF page {i+1} → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
             text = self._pdf2text(data, i)
-            best_amount = self._get_amount_from_text(text)
+            best_amount, best_date = self._get_amount_from_text(text)
+            best_date = parse_date(best_date)
             if best_amount is not None:
                 print(f"extracted: {best_amount}")
                 total += best_amount
             else:
                 print(f"not confident, falling back to regex")
                 total += self._pdf_page_regex_fallback(data, parse_key)
-        return total
+        return total, best_date
 
     def _parse_html(self, data: str, parse_key: str | None = None) -> float:
         print(f"HTML → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
         text = self._html2text(data)
-        best_amount = self._get_amount_from_text(text)
+        best_amount, best_date = self._get_amount_from_text(text)
+        best_date = parse_date(best_date)
         if best_amount is not None:
             print(f"extracted: {best_amount}")
-            return best_amount
+            return best_amount, best_date
         print("not confident, falling back to regex")
         return self._html_regex_fallback(data, parse_key)
 
@@ -171,9 +187,19 @@ class ReadBill:
             for data in data_list:
                 try:
                     if isinstance(data, bytes):
-                        bill_dict[date] = bill_dict.get(date, 0.0) + self._parse_pdf(data, self.parse_key)
+                        current_total, extracted_date = self._parse_pdf(data, self.parse_key)
+                        print(f"Processed PDF for date {date}, current total: {current_total}, extracted date: {extracted_date}")
+                        if extracted_date is not None:
+                            bill_dict[extracted_date] = bill_dict.get(extracted_date, 0.0) + current_total
+                        else:
+                            bill_dict[date] = bill_dict.get(date, 0.0) + current_total
+                        print(f"Processed PDF for date {date}, current total: {bill_dict[date]}")
                     elif isinstance(data, str):
-                        bill_dict[date] = bill_dict.get(date, 0.0) + self._parse_html(data, self.parse_key)
+                        current_total, extracted_date = self._parse_html(data, self.parse_key)
+                        if extracted_date is not None:
+                            bill_dict[extracted_date] = bill_dict.get(extracted_date, 0.0) + current_total
+                        else:
+                            bill_dict[date] = bill_dict.get(date, 0.0) + current_total
                 except Exception as e:
                     print(f"Error processing {date}: {e}")
         print("bill dict-", bill_dict)
