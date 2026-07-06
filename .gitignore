@@ -1,6 +1,7 @@
 *.json
 *.pdf
-test*
+test*.py
+test*.html
 .env
 venv/
 t.html
