@@ -45,49 +45,50 @@ def parse_date(date_str: str) -> str | None:
     """
     print(f"Parsing date string: {date_str}")
     date_str = date_str.lower().strip()
-    # Check for 'Month Year' format
-    month_year_match = re.fullmatch(r'([a-zA-Z]+)\s+(\d{4})', date_str) 
+    # Check for 'Month Year' or Month-Year or Month/Year format
+    month_year_match = re.search(r'([a-zA-Z]+)[\s\-\/]+(\d{4})', date_str) 
+    print(f"Month-Year match: {month_year_match}", f"Date string: {date_str}")
     if month_year_match:
         month_name, year = month_year_match.groups()
         month_num = _MONTH_NAMES.get(month_name.lower())
         if month_num:
             print(f"Format 'Month Year', extracted month: {month_num}, year: {year}")
             return build_result(month_num, int(year))
-    # Check for 'yyyy/mm/dd' format
-    ymd_match = re.fullmatch(r'(\d{4})/(\d{1,2})/(\d{1,2})', date_str)
+    # Check for 'yyyy/mm/dd' or 'yyyy-mm-dd' format
+    ymd_match = re.fullmatch(r'(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})', date_str)
     if ymd_match:       
         year, month, day = ymd_match.groups()
         print(f"Format 'yyyy/mm/dd', extracted month: {month}, year: {year}")
         return build_result(int(month), int(year), int(day))
-    # Check for 'mm/dd/yyyy' format
-    mdy_match = re.fullmatch(r'(\d{1,2})/(\d{1,2})/(\d{4})', date_str)
+    # Check for 'mm/dd/yyyy' or 'mm-dd-yyyy' format
+    mdy_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})', date_str)
     if mdy_match:
         month, day, year = mdy_match.groups()
         print(f"Format 'mm/dd/yyyy', extracted month: {month}, year: {year}")
         return build_result(int(month), int(year), int(day))
-    # Check for 'mm/yy' format
-    my_short_match = re.fullmatch(r'(\d{1,2})/(\d{2})', date_str)
+    # Check for 'mm/yy' or 'mm-yy' format
+    my_short_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{2})', date_str)
     if my_short_match:
         month, year = my_short_match.groups()
         year_full = f"20{year}"  # Assuming 21st century for two-digit years
         print(f"Format 'mm/yy', extracted month: {month}, year: {year_full}")
         return build_result(int(month), int(year_full))
-    # Check for yy/mm format
-    ym_short_match = re.fullmatch(r'(\d{2})/(\d{1,2})', date_str)
+    # Check for yy/mm or yy-mm format
+    ym_short_match = re.fullmatch(r'(\d{2})[\-\/](\d{1,2})', date_str)
     if ym_short_match:
         year, month = ym_short_match.groups()
         year_full = f"20{year}"  # Assuming 21st century for two-digit years
         print(f"Format 'yy/mm', extracted month: {month}, year: {year_full}")
         return build_result(int(month), int(year_full))
-    # Check for 'dd/mm/yy' format
-    dmy_short_match = re.fullmatch(r'(\d{1,2})/(\d{1,2})/(\d{2})', date_str)
+    # Check for 'dd/mm/yy' or 'dd-mm-yy' format
+    dmy_short_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{2})', date_str)
     if dmy_short_match:
         day, month, year = dmy_short_match.groups()
         year_full = f"20{year}"  # Assuming 21st century for two-digit years
         print(f"Format 'dd/mm/yy', extracted month: {month}, year: {year_full}")
         return build_result(int(month), int(year_full), int(day))
-    # Check for 'mm/yyyy' format
-    my_match = re.fullmatch(r'(\d{1,2})/(\d{4})', date_str)
+    # Check for 'mm/yyyy' or 'mm-yyyy' format
+    my_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{4})', date_str)
     if my_match:
         month, year = my_match.groups()
         print(f"Format 'mm/yyyy', extracted month: {month}, year: {year}")
@@ -107,9 +108,9 @@ def increment_date(date_str):
 
 # Extract date from list format and return as mm/yyyy with month -1
 def decrement_date(date_list):
-    month_name = date_list[2]
+    month_name = date_list[1]
     month_num = _MONTH_NAMES.get(month_name.lower(), 0) - 1
-    year = date_list[3]
+    year = date_list[2]
     year_num = int(year)
     if month_num == 0:
         month_num = 12
@@ -117,8 +118,8 @@ def decrement_date(date_list):
     return f"{month_num:02d}/{year_num}"
 
 def get_date(date_list):
-    month_name = date_list[2]
+    month_name = date_list[1]
     month_num = _MONTH_NAMES.get(month_name.lower(), 0)
-    year = date_list[3]
+    year = date_list[2]
     year_num = int(year)
     return f"{month_num:02d}/{year_num}"
