@@ -1,13 +1,3 @@
-"""
-Unit tests for layoutmlv3_model.py
-
-`make_word_boxes` and `LayoutModel.build_questions` are pure logic, tested
-directly. `LayoutModel.ask_layoutlm_image` / `ask_layoutlm_text` call the real
-HF pipeline in `__init__`, so instances here are built via object.__new__ to
-skip __init__ (which would otherwise call the stubbed `transformers.pipeline`
-and raise). `_qa_pipeline` is replaced with a MagicMock we control directly --
-the real pipeline is never invoked in this file.
-"""
 from unittest.mock import MagicMock
 import pytest
 from layoutmlv3_model import make_word_boxes, LayoutModel

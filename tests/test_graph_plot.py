@@ -1,13 +1,3 @@
-"""
-Unit tests for graph_plot.py
-
-Both plotly and matplotlib run for real here (no mocking) since they're
-deterministic, in-memory rendering libraries with no external I/O -- a good
-fit for the unit layer. We assert on structural properties of the output
-(valid HTML string, non-empty bytes, correct format) rather than exact
-pixel/byte content, since rendering output can vary slightly across library
-versions.
-"""
 import pytest
 from graph_plot import GraphPlot
 

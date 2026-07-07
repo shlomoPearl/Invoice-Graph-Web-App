@@ -1,11 +1,3 @@
-"""
-Shared fixtures and environment setup.
-
-Several modules (crypto.py, db.py, storage.py) read required env vars at
-IMPORT time via os.getenv(...) + `raise RuntimeError(...)` if missing. We set
-sane test defaults here, before any test module imports them, so that a bare
-`import crypto` doesn't blow up the whole test session.
-"""
 import os
 from cryptography.fernet import Fernet
 
