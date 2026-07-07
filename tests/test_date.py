@@ -35,6 +35,15 @@ class TestParseDate:
 
     def test_mm_yy_short_year(self):
         assert parse_date("03/24") == "03/2024"
+        assert parse_date("12/24") == "12/2024"
+
+    def test_yy_mm_short_year(self):
+        assert parse_date("24/03") == "03/2024"
+        assert parse_date("24/12") == "12/2024"
+
+    def test_dd_mm_yy(self):
+        assert parse_date("15/03/24") == "03/2024"
+        assert parse_date("01/12/24") == "12/2024"
 
     def test_full_date_not_misparsed_as_mm_yyyy(self):
         assert parse_date("03/15/2024") == "03/2024"
@@ -47,6 +56,13 @@ class TestParseDate:
 
     def test_only_year_returns_none(self):
         assert parse_date("2024") is None
+
+    def test_invalid_date(self):
+        print(parse_date("31/02/2024"))
+        assert parse_date("31/02/2024") == None
+        assert parse_date("30/02/2024") == None
+        assert parse_date("31/04/2023") == None
+        assert parse_date("32/09/2023") == None
 
 
 class TestIncrementDate:
@@ -92,3 +108,8 @@ class TestRangeDate:
     def test_date_out_of_range_after(self):
         assert date_in_range("01/2025", "01/2024", "12/2024") == False
         assert date_in_range("09/2024", "01/2024", "08/2024") == False
+
+    def test_invalid_date_format(self):
+        assert date_in_range("2024/03", "01/2024", "12/2024") == False
+        assert date_in_range("03-2024", "01/2024", "12/2024") == False
+        assert date_in_range("March 2024", "01/2024", "12/2024") == False
