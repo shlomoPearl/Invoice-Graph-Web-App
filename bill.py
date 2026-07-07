@@ -101,7 +101,13 @@ class ReadBill:
         return page_total
 
 
-    def _pdf_page_regex_fallback(self, data: bytes, parse_key: str | None = None) -> float:
+    def _pdf_page_regex_fallback(self, data: bytes | str, parse_key: str | None = None) -> float:
+        if isinstance(data, str):
+            if not data or not data.strip():
+                return 0.0
+            return sum(amt
+                       for line in data.split('\n') if line.strip()
+                       for amt in self._extract_amounts_from_line(line, parse_key))
         try:
             reader = pdfplumber.open(BytesIO(data))
             total = 0.0
@@ -109,15 +115,12 @@ class ReadBill:
                 text = page.extract_text()
                 if not text or not text.strip():
                     continue
-                total += sum(
-                    amt
-                    for line in text.split('\n')
-                    if line.strip()
-                    for amt in self._extract_amounts_from_line(line, parse_key)
-                )
+                total += sum(amt
+                            for line in text.split('\n') if line.strip()
+                            for amt in self._extract_amounts_from_line(line, parse_key))
             return total
         except Exception as e:
-            print(f"PyPDF2 fallback error: {e}")
+            print(f"pdfplumber fallback error: {e}")
             return 0.0
         
     def _html2text(self, html: str) -> str:
@@ -146,7 +149,7 @@ class ReadBill:
                 best_date_score = score 
         return best_amount, best_date
             
-    def _parse_pdf(self, data: bytes, parse_key: str | None = None) -> float:
+    def _parse_pdf(self, data: bytes, parse_key: str | None = None) -> tuple[float,str | None]:
         """PDF → text → LayoutLMv3 text mode → regex fallback per page."""
         try:
             images = convert_from_bytes(data, dpi=200)
@@ -158,7 +161,6 @@ class ReadBill:
         for i in range(len(images)):
             print(f"PDF page {i+1} → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
             text = self._pdf2text(data, i)
-            print(f"Extracted text from PDF page {i+1}:\n{text}")
             best_amount, best_date = self._get_amount_from_text(text)
             best_date = parse_date(best_date)
             if best_amount is not None:
@@ -166,10 +168,10 @@ class ReadBill:
                 total += best_amount
             else:
                 print(f"not confident, falling back to regex")
-                total += self._pdf_page_regex_fallback(data, parse_key)
+                total += self._pdf_page_regex_fallback(text, parse_key)
         return total, best_date
 
-    def _parse_html(self, data: str, parse_key: str | None = None) -> float:
+    def _parse_html(self, data: str, parse_key: str | None = None) -> tuple[float,str | None]:
         print(f"HTML → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
         text = self._html2text(data)
         best_amount, best_date = self._get_amount_from_text(text)
