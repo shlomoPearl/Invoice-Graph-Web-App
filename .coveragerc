@@ -1,0 +1,25 @@
+[run]
+# Only measure the app's own source files, not the test suite itself,
+# installed packages, or one-off scripts that aren't meaningfully testable.
+source = .
+omit =
+    tests/*
+    */site-packages/*
+    */dist-packages/*
+    create_table.py
+    test_1.py
+    test.py
+
+[report]
+# Lines that are intentionally never hit by tests (defensive guards,
+# debug-only branches, etc.) can be marked with "# pragma: no cover".
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+
+precision = 1
+skip_empty = true
+
+[html]
+directory = htmlcov

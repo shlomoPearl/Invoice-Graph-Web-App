@@ -8,4 +8,6 @@ venv/
 t.html
 *png
 .idea
+__pycache__.coverage
+.coverage
 __pycache__
