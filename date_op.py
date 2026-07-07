@@ -52,8 +52,12 @@ def parse_date(date_str: str) -> str | None:
     -'mm/yy'
     Returns None if the date cannot be parsed.
     """
-    print(f"Parsing date string: {date_str}")
-    date_str = date_str.lower().strip()
+    try:
+        print(f"Parsing date string: {date_str}")
+        date_str = date_str.lower().strip()
+    except AttributeError as e:
+        print(f"Invalid input to parse date - {date_str}. Got error - {e}")
+        return None
     # Check for 'Month Year' or Month-Year or Month/Year format
     month_year_match = re.search(r'([a-zA-Z]+)[\s\-\/]+(\d{4})', date_str) 
     print(f"Month-Year match: {month_year_match}", f"Date string: {date_str}")
@@ -138,5 +142,4 @@ def get_date(date_list):
                 return f"{month_num:02d}/{year_num}"
     return None
 
-print(parse_date("31/02/2024"))  # This will print None because February 31st is not a valid date.
-print(parse_date("31/04/2023"))  # This will print None because April has only 30 days.
+print(parse_date(None))  
