@@ -69,33 +69,34 @@ def parse_date(date_str: str) -> str | None:
         year, month, day = ymd_match.groups()
         print(f"Format 'yyyy/mm/dd', extracted month: {month}, year: {year}")
         return build_result(int(month), int(year), int(day))
-    # Check for 'mm/dd/yyyy' or 'mm-dd-yyyy' format
+    # Check for 'dd/mm/yyyy' or 'dd-mm-yyyy' or 'mm/dd/yyyy' or 'mm-dd-yyyy' format with priority to 'dd/mm/yyyy'
     mdy_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})', date_str)
     if mdy_match:
         month, day, year = mdy_match.groups()
         print(f"Format 'mm/dd/yyyy', extracted month: {month}, year: {year}")
-        return build_result(int(month), int(year), int(day))
+        return build_result(int(day), int(year), int(month)) or build_result(int(month), int(year), int(day))
+    # Check for 'dd/mm/yy' or 'dd-mm-yy' or 'mm/dd/yy' or 'mm-dd-yy' format with priority to 'dd/mm/yy'
+    mdy_short_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{2})', date_str)
+    if mdy_short_match:
+        month, day, year = mdy_short_match.groups()
+        year_full = f"20{year}"  # Assuming 21st century for two-digit years
+        print(f"Format 'mm/dd/yy', extracted month: {month}, year: {year_full}")
+        return build_result(int(day), int(year_full), int(month)) or build_result(int(month), int(year_full), int(day))   
     # Check for 'mm/yy' or 'mm-yy' format
     my_short_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{2})', date_str)
     if my_short_match:
         month, year = my_short_match.groups()
         year_full = f"20{year}"  # Assuming 21st century for two-digit years
         print(f"Format 'mm/yy', extracted month: {month}, year: {year_full}")
-        return build_result(int(month), int(year_full))
-    # Check for yy/mm or yy-mm format
-    ym_short_match = re.fullmatch(r'(\d{2})[\-\/](\d{1,2})', date_str)
-    if ym_short_match:
-        year, month = ym_short_match.groups()
-        year_full = f"20{year}"  # Assuming 21st century for two-digit years
-        print(f"Format 'yy/mm', extracted month: {month}, year: {year_full}")
-        return build_result(int(month), int(year_full))
-    # Check for 'dd/mm/yy' or 'dd-mm-yy' format
-    dmy_short_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{2})', date_str)
-    if dmy_short_match:
-        day, month, year = dmy_short_match.groups()
-        year_full = f"20{year}"  # Assuming 21st century for two-digit years
-        print(f"Format 'dd/mm/yy', extracted month: {month}, year: {year_full}")
-        return build_result(int(month), int(year_full), int(day))
+        if build_result(int(month), int(year_full)):
+            return build_result(int(month), int(year_full))
+        # Check for yy/mm or yy-mm format if the previous format was not valid
+        ym_short_match = re.fullmatch(r'(\d{2})[\-\/](\d{1,2})', date_str)
+        if ym_short_match:
+            year, month = ym_short_match.groups()
+            year_full = f"20{year}"  # Assuming 21st century for two-digit years
+            print(f"Format 'yy/mm', extracted month: {month}, year: {year_full}")
+            return build_result(int(month), int(year_full))
     # Check for 'mm/yyyy' or 'mm-yyyy' format
     my_match = re.fullmatch(r'(\d{1,2})[\-\/](\d{4})', date_str)
     if my_match:
@@ -136,3 +137,6 @@ def get_date(date_list):
                 year_num = int(year)
                 return f"{month_num:02d}/{year_num}"
     return None
+
+print(parse_date("31/02/2024"))  # This will print None because February 31st is not a valid date.
+print(parse_date("31/04/2023"))  # This will print None because April has only 30 days.
