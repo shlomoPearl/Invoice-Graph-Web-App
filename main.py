@@ -2,6 +2,9 @@ from fastapi import FastAPI, Form, Response, Request, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import asyncio
+import json
 from contextlib import asynccontextmanager
 from googleapiclient.discovery import build
 from starlette.middleware.sessions import SessionMiddleware
@@ -27,6 +30,8 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+_progress_queues: dict[str, asyncio.Queue] = {}
+
 templates = Jinja2Templates(directory="templates")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 KEY = os.getenv("KEY")
@@ -52,6 +57,11 @@ app.add_middleware(
 #     allow_headers=["*"],
 # )
 
+def _push_progress(session_id: str, loop: asyncio.AbstractEventLoop, **kwargs):
+    """Called from sync processing thread to send a progress event."""
+    queue = _progress_queues.get(session_id)
+    if queue:
+        loop.call_soon_threadsafe(queue.put_nowait, kwargs)
 
 class FormData(BaseModel):
     email: str
@@ -90,6 +100,7 @@ async def handle_form(request: Request,
     g_id = await get_current_user(request, db)
     if not all([email, start_date, end_date, currency]):
         raise HTTPException(status_code=400, detail="Missing required form fields.")
+
     form_data = {
         "email": email,
         "subject": subject,
@@ -98,19 +109,15 @@ async def handle_form(request: Request,
         "start_date": start_date,
         "end_date": end_date,
     }
-    try:
-        if g_id:
-            token_dict = load_user_token(db, g_id)
-            service = GmailAuth.get_service_from_token_dict(token_dict)
-            if token_dict:
-                return await process_flow(request, service, form_data)
 
-        request.session["form_data"] = form_data
-        return RedirectResponse("/auth/login", status_code=303)
+    if g_id:
+        # Store form data and show loading page — SSE handles the rest
+        request.session["pending_form_data"] = form_data
+        return templates.TemplateResponse("loading.html", {"request": request})
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+    # Not logged in — go through OAuth first
+    request.session["form_data"] = form_data
+    return RedirectResponse("/auth/login", status_code=303)
 
 @app.get("/auth/login")
 async def login_redirect(request: Request):
@@ -155,19 +162,89 @@ async def auth_callback(request: Request, code: str,
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OAuth Error: {str(e)}")
 
+def _process_flow_sync(service, form_data: dict, progress_cb) -> dict:
+    progress_cb(step="gmail", message="Reading emails...",
+                detail=f"Searching from {form_data['email']}")
+    gmail_client = Gmail(
+        address=form_data["email"],
+        subject=form_data.get("subject"),
+        date_range=[form_data["start_date"], form_data["end_date"]],
+    )
+    attachments = gmail_client.search_mail(service)
+    found = len(attachments) if attachments else 0
+ 
+    progress_cb(step="extract", message="Processing invoices...",
+                detail=f"Found {found} invoice(s)")
+ 
+    def bill_progress(step, message, detail=""):
+        progress_cb(step=step, message=message, detail=detail)
+ 
+    bill_reader = ReadBill(
+    attachments,
+    form_data["currency"],
+    range=[form_data["start_date"], form_data["end_date"]],
+    parse_key=form_data.get("keyword"))
+    bill_dict = bill_reader.parser(progress_cb=bill_progress)
+ 
+    progress_cb(step="graph", message="Building graph...", detail="")
+    graph = GraphPlot(bill_dict)
+    graph_html = graph.get_html_graph()
+ 
+    return {"graph_html": graph_html, "bill_dict": bill_dict}
 
-@app.get("/process_after_oauth")
-async def process_after_oauth(request: Request, db: Session = Depends(get_db)):
+@app.get("/progress")
+async def progress_stream(request: Request, db: Session = Depends(get_db)):
     g_id = await get_current_user(request, db)
     if not g_id:
         return RedirectResponse("/auth/login", status_code=303)
+ 
     token_dict = load_user_token(db, g_id)
     service = GmailAuth.get_service_from_token_dict(token_dict)
-    form_data = request.session.get("pending_form_data")
+    form_data = request.session.pop("pending_form_data", None)
     if not form_data:
         return RedirectResponse("/", status_code=303)
-    return await process_flow(request, service, form_data)
-
+ 
+    session_id = request.session.get("session_id")
+    queue: asyncio.Queue = asyncio.Queue()
+    _progress_queues[session_id] = queue
+    loop = asyncio.get_event_loop()
+ 
+    def progress(step: str = None, message: str = None, detail: str = ""):
+        _push_progress(session_id, loop, step=step, message=message, detail=detail)
+ 
+    async def run_processing():
+        try:
+            result = await loop.run_in_executor(
+                None,
+                lambda: _process_flow_sync(service, form_data, progress)
+            )
+            request.session["bill_dict"] = result["bill_dict"]
+            await queue.put({"done": True, "graph_html": result["graph_html"]})
+        except Exception as e:
+            await queue.put({"error": str(e)})
+ 
+    asyncio.create_task(run_processing())
+ 
+    async def generate():
+        try:
+            while True:
+                msg = await asyncio.wait_for(queue.get(), timeout=300.0)
+                yield f"data: {json.dumps(msg)}\n\n"
+                if msg.get("done") or msg.get("error"):
+                    break
+        except asyncio.TimeoutError:
+            yield f"data: {json.dumps({'error': 'Processing timed out'})}\n\n"
+        finally:
+            _progress_queues.pop(session_id, None)
+ 
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # important for nginx on EC2
+        }
+    )
 
 async def process_flow(request: Request, service: build, form_data: dict):
     try:
@@ -207,6 +284,16 @@ def download_graph(request: Request, format: str):
             "Content-Disposition": f"attachment; filename=graph.{format}"
         }
     )
+
+@app.get("/show_graph", response_class=HTMLResponse)
+async def show_graph(request: Request):
+    graph_html = request.session.get("graph_html")
+    if not graph_html:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("graph.html", {
+        "request": request,
+        "graph_html": graph_html,
+    })
 
 
 

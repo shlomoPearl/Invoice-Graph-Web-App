@@ -4,42 +4,33 @@
     <meta charset="UTF-8">
     <title>Loading...</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
     <style>
         body {
-            margin: 0;
-            padding: 0;
+            margin: 0; padding: 0;
             font-family: "Inter", sans-serif;
             background: linear-gradient(135deg, #f6f7ff, #eef1ff);
             height: 100vh;
             overflow: hidden;
         }
         .loader-wrapper {
-            position: fixed;
-            inset: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            position: fixed; inset: 0;
+            display: flex; justify-content: center; align-items: center;
             backdrop-filter: blur(6px);
-            background: rgba(255, 255, 255, 0.5);
+            background: rgba(255,255,255,0.5);
             z-index: 9999;
         }
         .loader-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 18px;
-            text-align: center;
+            display: flex; flex-direction: column;
+            align-items: center; gap: 18px; text-align: center;
+            max-width: 400px; padding: 0 20px;
         }
         .loader {
-            width: 80px;
-            height: 80px;
+            width: 80px; height: 80px;
             border: 6px solid #e2e2e2;
             border-top-color: #6a00ff;
             border-radius: 50%;
             animation: spin 0.9s linear infinite, pulse 1.8s ease-in-out infinite;
         }
-
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -50,38 +41,142 @@
             100% { box-shadow: 0 0 0 0 rgba(106,0,255,0.25); }
         }
         .loader-text {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #333;
-            letter-spacing: 0.2px;
-            opacity: 0.9;
+            font-size: 1.25rem; font-weight: 600;
+            color: #333; letter-spacing: 0.2px; opacity: 0.9;
         }
+        .loader-detail {
+            font-size: 0.9rem; color: #666;
+            min-height: 1.2em;
+            transition: opacity 0.3s ease;
+        }
+        .progress-bar-wrapper {
+            width: 100%; background: #e2e2e2;
+            border-radius: 99px; height: 6px; overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%; background: #6a00ff;
+            border-radius: 99px;
+            transition: width 0.4s ease;
+            width: 0%;
+        }
+        .step-list {
+            list-style: none; padding: 0; margin: 0;
+            width: 100%; text-align: left;
+            font-size: 0.85rem; color: #555;
+        }
+        .step-list li {
+            padding: 4px 0;
+            display: flex; align-items: center; gap: 8px;
+            transition: color 0.3s;
+        }
+        .step-list li.done { color: #16a34a; }
+        .step-list li.active { color: #6a00ff; font-weight: 600; }
+        .step-list li .icon { font-size: 1rem; min-width: 20px; }
+        .error-text { color: #dc2626; font-size: 0.9rem; }
     </style>
 </head>
-
 <body>
-
     <div class="loader-wrapper">
         <div class="loader-container">
-            <div class="loader"></div>
-            <div class="loader-text">Preparing your graph...</div>
+            <div class="loader" id="spinner"></div>
+
+            <div class="loader-text" id="main-text">Preparing your graph...</div>
+            <div class="loader-detail" id="detail-text"></div>
+
+            <div class="progress-bar-wrapper">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+
+            <ul class="step-list" id="step-list">
+                <li id="step-gmail">   <span class="icon">📬</span> Reading emails</li>
+                <li id="step-extract"> <span class="icon">🔍</span> Extracting invoice data</li>
+                <li id="step-model">   <span class="icon">🤖</span> Running AI model</li>
+                <li id="step-regex">   <span class="icon">📝</span> Parsing amounts</li>
+                <li id="step-graph">   <span class="icon">📊</span> Building graph</li>
+            </ul>
         </div>
     </div>
-    <script>
-        window.addEventListener("load", () => {
-            fetch("/process_after_oauth")
-                .then(response => response.text())
-                .then(html => {
-                    document.open();
-                    document.write(html);
-                    document.close();
-                })
-                .catch(err => {
-                    console.error(err);
-                    document.body.innerHTML = "<h2 style='text-align:center;margin-top:40px;'>An error occurred.</h2>";
-                });
-        });
-    </script>
 
+    <script>
+        const STEPS = {
+            "gmail":   { el: "step-gmail",   progress: 15 },
+            "extract": { el: "step-extract", progress: 35 },
+            "model":   { el: "step-model",   progress: 65 },
+            "regex":   { el: "step-regex",   progress: 80 },
+            "graph":   { el: "step-graph",   progress: 95 },
+        };
+
+        function setStep(stepKey) {
+            // Mark all previous steps done, current active
+            let found = false;
+            for (const [key, val] of Object.entries(STEPS)) {
+                const el = document.getElementById(val.el);
+                if (key === stepKey) {
+                    el.classList.remove("done");
+                    el.classList.add("active");
+                    document.getElementById("progress-bar").style.width = val.progress + "%";
+                    found = true;
+                } else if (!found) {
+                    el.classList.remove("active");
+                    el.classList.add("done");
+                } else {
+                    el.classList.remove("active", "done");
+                }
+            }
+        }
+
+        function setDetail(text) {
+            document.getElementById("detail-text").textContent = text;
+        }
+
+        function setMainText(text) {
+            document.getElementById("main-text").textContent = text;
+        }
+
+        function markAllDone() {
+            for (const val of Object.values(STEPS)) {
+                const el = document.getElementById(val.el);
+                el.classList.remove("active");
+                el.classList.add("done");
+            }
+            document.getElementById("progress-bar").style.width = "100%";
+        }
+
+        // Connect to SSE
+        const evtSource = new EventSource("/progress");
+
+        evtSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            if (data.error) {
+                evtSource.close();
+                setMainText("Something went wrong");
+                document.getElementById("detail-text").innerHTML =
+                    `<span class="error-text">${data.error}</span>`;
+                document.getElementById("spinner").style.display = "none";
+                return;
+            }
+
+            if (data.step) setStep(data.step);
+            if (data.detail) setDetail(data.detail);
+            if (data.message) setMainText(data.message);
+
+            if (data.done) {
+                evtSource.close();
+                markAllDone();
+                setMainText("Done! Loading your graph...");
+                setTimeout(() => { 
+                    document.open();
+                    document.write(data.graph_html);
+                    document.close();
+                }, 500);
+            }
+        };
+
+        evtSource.onerror = function() {
+            evtSource.close();
+            setMainText("Connection lost. Please try again.");
+        };
+    </script>
 </body>
 </html>
