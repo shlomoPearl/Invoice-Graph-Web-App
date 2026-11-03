@@ -1,0 +1,4 @@
+pytest-playwright
+requests
+itsdangerous
+python-dotenv

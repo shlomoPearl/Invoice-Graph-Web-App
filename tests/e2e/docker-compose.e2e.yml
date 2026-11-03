@@ -1,0 +1,43 @@
+# E2E override. Run alongside the base compose file:
+#
+#   docker compose -f docker-compose.yml -f tests/e2e/docker-compose.e2e.yml up -d
+#
+# Adds a `google-stub` service (fakes Google OAuth + Gmail API) and points
+# the `fastapi` service at it instead of real Google, via env vars and a
+# stub-flavored credentials.json mounted over the real one. Production
+# `docker-compose.yml` is untouched by this file.
+
+services:
+  google-stub:
+    image: python:3.12-slim
+    container_name: google_stub
+    working_dir: /stub
+    volumes:
+      - ./discovery_docs.py:/stub/discovery_docs.py:ro
+      - ./google_stub_app.py:/stub/google_stub_app.py:ro
+    environment:
+      STUB_BASE_URL: "http://google-stub:9090/"
+    command: >
+      sh -c "pip install --no-cache-dir fastapi 'uvicorn[standard]' &&
+             uvicorn google_stub_app:app --host 0.0.0.0 --port 9090"
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9090/_stub/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  fastapi:
+    depends_on:
+      google-stub:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      GOOGLE_API_DISCOVERY_URL: "http://google-stub:9090/discovery/v1/apis/{api}/{apiVersion}/rest"
+      GOOGLE_CREDENTIALS_FILE: "/app/credentials.stub.json"
+      OAUTHLIB_INSECURE_TRANSPORT: "1"
+      REDIRECT_URI: "http://localhost:8000/oauth2callback"
+    volumes:
+      - ./credentials.stub.json:/app/credentials.stub.json:ro
