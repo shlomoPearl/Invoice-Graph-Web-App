@@ -110,7 +110,7 @@ def parse_date(date_str: str) -> str | None:
     return None  
 
 # Convert date from dd/mm/yyyy format to yyyy/mm/dd format with month +1
-def increment_date(date_str):
+def convert_and_increment_date(date_str):
     date_obj = datetime.strptime(date_str, '%d/%m/%Y')
     month = date_obj.month + 1
     year = date_obj.year
@@ -119,6 +119,17 @@ def increment_date(date_str):
         month = 1
         year += 1
     return f"{year:04d}/{month:02d}/{day:02d}"
+
+
+# convert date dd/mm/yyyy -> yyyy/mm/dd
+def convert_date_format(date_str):
+    try:
+        date_obj = datetime.strptime(date_str, '%d/%m/%Y')
+        return date_obj.strftime('%Y/%m/%d')
+    except ValueError as e:
+        print(f"Error converting date format for {date_str}: {e}")
+        return None
+
 
 # Extract date from list format and return as mm/yyyy with month -1
 def decrement_date(date_list):

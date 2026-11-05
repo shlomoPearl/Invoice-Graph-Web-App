@@ -2,7 +2,7 @@ from __future__ import print_function
 import base64
 from googleapiclient.errors import HttpError
 from sqlalchemy.util import defaultdict
-from date_op import get_date, increment_date
+from date_op import convert_date_format, get_date, convert_and_increment_date
 
 
 class Gmail:
@@ -16,8 +16,8 @@ class Gmail:
         query_parts = [f"from:{self.address}"]
         if self.subject:
             query_parts.append(f"subject:{self.subject}")
-        query_parts.append(f"after:{self.date_range[0]}")
-        query_parts.append(f"before:{increment_date(self.date_range[1])}")
+        query_parts.append(f"after:{convert_date_format(self.date_range[0])}")
+        query_parts.append(f"before:{convert_and_increment_date(self.date_range[1])}")
         query = " ".join(query_parts)
         print(f"Query: {query}")
         try:
@@ -59,3 +59,4 @@ class Gmail:
             return date_attachment_dict
         except HttpError as error:
             print(f"An error occurred: {error}")
+            return {}

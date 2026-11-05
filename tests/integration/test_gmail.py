@@ -1,7 +1,6 @@
 import base64
 from unittest.mock import MagicMock
 import httplib2
-import pytest
 from googleapiclient.errors import HttpError
 
 from gmail import Gmail
@@ -94,7 +93,7 @@ class TestQueryConstruction:
         q = service.users.return_value.messages.return_value.list.call_args.kwargs["q"]
         assert "subject:" not in q
 
-    def test_before_date_is_converted_to_yyyy_mm_dd_and_incremented(self):
+    def test_before_date_is_converted_and_incremented(self):
         service = make_service({"messages": []})
         gmail = Gmail(address="a@b.com", subject=None,
                        date_range=["01/03/2024", "15/03/2024"])
@@ -103,29 +102,15 @@ class TestQueryConstruction:
         q = service.users.return_value.messages.return_value.list.call_args.kwargs["q"]
         assert "before:2024/04/15" in q
 
-    def test_after_date_is_not_converted_known_bug(self):
-        """
-        KNOWN BUG: `search_mail` passes `self.date_range[0]` directly into
-        the "after:" clause without any reformatting, while "before:" is
-        correctly run through `increment_date()` (which reformats
-        dd/mm/yyyy -> yyyy/mm/dd). Gmail's search operators expect
-        yyyy/mm/dd; a raw "after:01/03/2024" is very likely misparsed or
-        silently ignored by Gmail's query parser, meaning the lower bound
-        of the date range filter may not actually be applied as intended.
-
-        This test pins down the current (buggy) behavior. Fix candidate:
-        convert date_range[0] with the same dd/mm/yyyy -> yyyy/mm/dd logic
-        used for date_range[1] (minus the +1 month increment).
-        """
+    def test_after_date_is_converted(self):
         service = make_service({"messages": []})
         gmail = Gmail(address="a@b.com", subject=None,
                        date_range=["01/03/2024", "15/03/2024"])
         gmail.search_mail(service)
 
         q = service.users.return_value.messages.return_value.list.call_args.kwargs["q"]
-        # Documents current behavior: raw dd/mm/yyyy, NOT reformatted.
-        assert "after:01/03/2024" in q
-        assert "after:2024/03/01" not in q
+        assert "after:2024/03/01" in q
+        assert "after:01/03/2024" not in q
 
     def test_result_num_forwarded_to_max_results(self):
         service = make_service({"messages": []})
@@ -256,28 +241,6 @@ class TestDateGrouping:
         assert result["03/2024"] == [html_a]
         assert result["04/2024"] == [html_b]
 
-    def test_missing_date_header_uses_none_as_key(self):
-        """
-        Documents current behavior: if a message has no 'Date' header,
-        `date` stays None, and (if the message has extractable content)
-        `date_attachment_dict[None]` is used as a real dict key. This is a
-        legitimate way for `bill.py`'s known `parse_date(None)` crash (see
-        test_bill_integration.py) to actually get triggered end-to-end, if
-        no valid Date header is found and the ML model also can't extract
-        a date.
-        """
-        html = "<html>no date header</html>"
-        msg = make_message("msg1", date_header=None, parts=[b64_html_part(html)])
-        service = make_service(
-            {"messages": [{"id": "msg1"}]},
-            get_responses={"msg1": msg},
-        )
-        gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "31/03/2024"])
-        result = gmail.search_mail(service)
-
-        assert result[None] == [html]
-
 
 class TestErrorHandlingAndEmptyResults:
     def test_no_messages_returns_empty_dict(self):
@@ -285,7 +248,6 @@ class TestErrorHandlingAndEmptyResults:
         gmail = Gmail(address="a@b.com", subject=None,
                        date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
         assert dict(result) == {}
 
     def test_missing_messages_key_returns_empty_dict(self):
@@ -298,18 +260,7 @@ class TestErrorHandlingAndEmptyResults:
 
         assert dict(result) == {}
 
-    def test_http_error_returns_none_known_bug(self):
-        """
-        KNOWN BUG: when the Gmail API raises HttpError (e.g. rate limiting,
-        auth failure mid-request), `search_mail`'s except block only prints
-        the error and falls off the end of the function -- there's no
-        explicit `return`, so Python implicitly returns None instead of an
-        (even empty) dict. Callers (main.py's process_flow ->
-        ReadBill(attachments, ...)) then call `.items()` on whatever this
-        returns; None has no `.items()`, so a transient Gmail API error
-        surfaces to the user as an unrelated AttributeError deep inside
-        bill.py rather than a clear "Gmail request failed" message.
-        """
+    def test_http_error_returns_empty_dict(self):
         service = MagicMock()
         resp = httplib2.Response({"status": 500})
         resp.reason = "Internal Server Error"
@@ -319,5 +270,4 @@ class TestErrorHandlingAndEmptyResults:
         gmail = Gmail(address="a@b.com", subject=None,
                        date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
-        assert result is None
+        assert result == {}

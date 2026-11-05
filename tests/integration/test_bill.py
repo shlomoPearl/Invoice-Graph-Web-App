@@ -1,9 +1,7 @@
 from io import BytesIO
 from unittest.mock import MagicMock
-
 import pytest
 from reportlab.pdfgen import canvas
-
 from bill import ReadBill
 
 
@@ -12,6 +10,7 @@ def make_read_bill(currency_symbols=("$",), parse_key=None, date_data_dict=None)
     rb.date_data_dict = date_data_dict or {}
     rb.currency_symbols = currency_symbols
     rb.parse_key = parse_key
+    rb.range = ["01/2024", "12/2024"]
     rb.ML_model = MagicMock()
     return rb
 
@@ -57,28 +56,6 @@ class TestParseHtml:
         html = "<html><body><p>Total: $150.00</p></body></html>"
         assert rb._parse_html(html)[1] == None
 
-    def test_regex_fallback_returns_float_not_tuple(self):
-        """
-        KNOWN BUG: when the ML model isn't confident about the amount,
-        `_parse_html` returns `self._html_regex_fallback(...)` directly,
-        which is a bare float -- not the `(amount, date)` tuple the rest of
-        the code expects. `ReadBill.parser()` does
-        `current_total, extracted_date = self._parse_html(...)`, which will
-        raise TypeError trying to unpack a float. In `parser()` this is
-        silently caught and logged (see TestParserExceptionIsolation below),
-        silently dropping that attachment's amount from the result -- a
-        confident regex-extracted total is lost with no visible error to
-        the caller.
-        """
-        rb = make_read_bill()
-        rb.ML_model.ask_layoutlm_text.return_value = ml_response(
-            None, 0.0, "March 2024", 0.9
-        )
-        html = "<html><body><p>Total: $150.00</p></body></html>"
-        result = rb._parse_html(html)
-        assert isinstance(result, float)  # NOT a (amount, date) tuple
-        assert result == 150.00
-
 
 class TestParsePdf:
     def test_single_page_confident_amount_and_date(self):
@@ -112,8 +89,8 @@ class TestParsePdf:
             result = rb._parse_pdf(pdf_bytes)
         finally:
             bill_module.convert_from_bytes = original
-        assert isinstance(result, float)
-        assert result == pytest.approx(42.00)
+        assert isinstance(result[0], float)
+        assert result[0] == pytest.approx(42.00)
 
     def handle_none_date(self):
         rb = make_read_bill()
@@ -198,7 +175,7 @@ class TestParserAggregation:
 
 
 class TestParserExceptionIsolation:
-    def test_one_bad_attachment_does_not_crash_processing_of_others(self):
+    def test_corrupt_pdf_does_not_crash_parser(self):
         """
         parser() wraps each attachment's processing in a broad try/except,
         so a failure on one (e.g. the None-date crash, or corrupt data)
@@ -206,30 +183,33 @@ class TestParserExceptionIsolation:
         """
         rb = make_read_bill(
             date_data_dict={
-                "01/2024": ["<html><body>Total: $999.00</body></html>"],  # will crash (no date)
-                "02/2024": ["<html><body>Total: $50.00</body></html>"],   # should succeed
+                "01/2024": [b"not a real pdf at all"],
+                "02/2024": ["<html><body>Total: $50.00</body></html>"],
             }
         )
         rb.ML_model.ask_layoutlm_text.side_effect = [
-            ml_response("999.00", 0.9, None, 0.0),          # 01/2024: triggers None-date crash
-            ml_response("50.00", 0.9, "February 2024", 0.9),  # 02/2024: happy path
+            ml_response(None, 0.0, None, 0.0),  # corrupt PDF
+            ml_response("50.00", 0.9, "February 2024", 0.9),  # healthy HTML
+        ]
+        result = rb.parser()
+        assert result.get("02/2024") == pytest.approx(50.00)
+        assert result.get("01/2024") == 0.0 
+
+    def test_corrupt_html_does_not_crash_parser(self):
+        rb = make_read_bill(
+            date_data_dict={
+                "01/2024": ["<html><body>Total: $100.00</body></html>"],
+                "02/2024": ["<html><body>not a real html at all"],
+            }
+        )
+        rb.ML_model.ask_layoutlm_text.side_effect = [
+            ml_response("100.00", 0.9, "January 2024", 0.9),  # healthy HTML
+            ml_response(None, 0.0, None, 0.0),  # corrupt HTML
         ]
         result = rb.parser()
         # The crashing attachment contributes nothing; the healthy one does.
-        assert "01/2024" not in result
-        assert result.get("02/2024") == pytest.approx(50.00)
-
-    def test_corrupt_pdf_bytes_does_not_crash_parser(self):
-        rb = make_read_bill(
-            date_data_dict={"01/2024": [b"not a real pdf at all"]}
-        )
-        # ML model won't even be reached if pdf2image/PyPDF2 fail first,
-        # but parser() should still return cleanly either way.
-        rb.ML_model.ask_layoutlm_text.return_value = ml_response(
-            None, 0.0, None, 0.0
-        )
-        result = rb.parser()
-        assert isinstance(result, dict)
+        assert result.get("01/2024") == pytest.approx(100.00)
+        assert result.get("02/2024") == 0.0 
 
     def test_empty_date_data_dict_returns_empty_bill_dict(self):
         rb = make_read_bill(date_data_dict={})

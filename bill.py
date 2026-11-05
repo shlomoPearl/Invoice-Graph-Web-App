@@ -98,10 +98,11 @@ class ReadBill:
                 amounts = self._extract_amounts_from_line(line, parse_key)
                 page_total += sum(amounts)
             i += 1
+        print(f"DEBUG: Total extracted from HTML: {page_total}")
         return page_total
 
 
-    def _pdf_page_regex_fallback(self, data: bytes | str, parse_key: str | None = None) -> float:
+    def _pdf_page_regex_fallback(self, data: bytes | str, parse_key: str | None = None) -> tuple[float, str | None]:
         if isinstance(data, str):
             if not data or not data.strip():
                 return 0.0
@@ -155,7 +156,7 @@ class ReadBill:
             images = convert_from_bytes(data, dpi=200)
         except Exception as e:
             print(f"pdf2image failed: {e}, falling back to regex")
-            return self._pdf_page_regex_fallback(data, parse_key)
+            return self._pdf_page_regex_fallback(data, parse_key), None
         total = 0.0
         best_date = None
         for i in range(len(images)):
@@ -175,12 +176,16 @@ class ReadBill:
         print(f"HTML → LayoutLMv3 text-mode (category: {parse_key or 'total'})")
         text = self._html2text(data)
         best_amount, best_date = self._get_amount_from_text(text)
+        print(f"DEBUG: best_amount: {best_amount}, best_date: {best_date}")
         best_date = parse_date(best_date)
+        print(f"DEBUG: Parsed date: {best_date}")
         if best_amount is not None:
             print(f"extracted: {best_amount}")
             return best_amount, best_date
         print("not confident, falling back to regex")
-        return self._html_regex_fallback(data, parse_key)
+        amount = self._html_regex_fallback(data, parse_key)
+        print(f"DEBUG: regex fallback extracted: {amount}")
+        return amount, best_date
 
 
     def parser(self) -> dict:
@@ -188,6 +193,7 @@ class ReadBill:
         for date, data_list in self.date_data_dict.items():
             for data in data_list:
                 try:
+                    print("DEBUG: Processing data for date", date)
                     if isinstance(data, bytes):
                         current_total, extracted_date = self._parse_pdf(data, self.parse_key)
                         print(f"Processed PDF for date {date}, current total: {current_total}, extracted date: {extracted_date}")
@@ -198,7 +204,9 @@ class ReadBill:
                             bill_dict[date] = bill_dict.get(date, 0.0) + current_total
                         print(f"Processed PDF for date {date}, current total: {bill_dict[date]}")
                     elif isinstance(data, str):
+                        print(f"DEBUG: {data}")
                         current_total, extracted_date = self._parse_html(data, self.parse_key)
+                        print(f"DEBUG: {current_total}, {extracted_date}")
                         if extracted_date is not None and date_in_range(extracted_date, self.range[0], self.range[1]):
                             bill_dict[extracted_date] = bill_dict.get(extracted_date, 0.0) + current_total
                         else:
