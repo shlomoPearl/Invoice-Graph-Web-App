@@ -7,7 +7,7 @@ omit =
     */site-packages/*
     */dist-packages/*
     create_table.py
-    test_1.py
+    test1.py
     test.py
 
 [report]
