@@ -1,5 +1,5 @@
 import pytest
-from date_op import date_in_range, parse_date, increment_date, decrement_date, get_date
+from date_op import date_in_range, parse_date, convert_and_increment_date, decrement_date, get_date
 
 
 class TestParseDate:
@@ -67,14 +67,14 @@ class TestParseDate:
 
 class TestIncrementDate:
     def test_normal_month_increment(self):
-        assert increment_date("15/03/2024") == "2024/04/15"
+        assert convert_and_increment_date("15/03/2024") == "2024/04/15"
 
     def test_december_rolls_over_to_january_next_year(self):
-        assert increment_date("10/12/2024") == "2025/01/10"
+        assert convert_and_increment_date("10/12/2024") == "2025/01/10"
 
     def test_invalid_format_raises(self):
         with pytest.raises(ValueError):
-            increment_date("2024/03/15")
+            convert_and_increment_date("2024/03/15")
 
 
 class TestDecrementDate:

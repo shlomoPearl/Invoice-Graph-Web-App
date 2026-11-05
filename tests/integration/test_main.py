@@ -32,7 +32,6 @@ import json
 import os
 import sys
 from unittest.mock import MagicMock
-
 import itsdangerous
 import pytest
 from fastapi.testclient import TestClient

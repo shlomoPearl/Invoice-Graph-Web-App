@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock
 import pytest
-
 import gmail_auth
 from gmail_auth import GmailAuth
 

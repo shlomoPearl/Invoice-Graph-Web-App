@@ -1,9 +1,5 @@
 import pytest
-from bill import (
-    ReadBill,
-    clean_amount_string,
-    extract_amount_from_answer,
-)
+from bill import ReadBill, clean_amount_string, extract_amount_from_answer
 
 
 def make_read_bill(currency_symbols=("$", "₪", "€"), parse_key=None):

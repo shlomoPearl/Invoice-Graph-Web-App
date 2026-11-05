@@ -24,7 +24,6 @@ import importlib
 import os
 import sys
 from datetime import datetime, timedelta, timezone
-
 import pytest
 from testcontainers.postgres import PostgresContainer
 

@@ -1,5 +1,4 @@
 from unittest.mock import MagicMock
-import pytest
 from layoutmlv3_model import make_word_boxes, LayoutModel
 
 

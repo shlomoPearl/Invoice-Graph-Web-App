@@ -66,8 +66,6 @@ class TestDownloadByF:
         assert data[:4] == b"%PDF"  # PDF magic bytes
 
     def test_single_entry_bill_dict_does_not_raise(self):
-        # Matplotlib bar charts with exactly one bar are a known edge case
-        # (bar width/spacing calculations can behave oddly with n=1).
         graph = GraphPlot({"01/2024": 42.0})
         data = graph.download_by_f("png")
         assert len(data) > 0

@@ -2,7 +2,6 @@ import base64
 from unittest.mock import MagicMock
 import httplib2
 from googleapiclient.errors import HttpError
-
 from gmail import Gmail
 
 
