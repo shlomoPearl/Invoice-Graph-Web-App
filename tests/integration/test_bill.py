@@ -7,7 +7,7 @@ from bill import ReadBill
 
 
 def make_read_bill(currency_symbols=("$",), parse_key=None, date_data_dict=None):
-    rb = object.__new__(ReadBill)
+    rb = object.__new__(ReadBill) # bypass __init__ to avoid loading the ML model
     rb.date_data_dict = date_data_dict or {}
     rb.currency_symbols = currency_symbols
     rb.parse_key = parse_key
@@ -43,7 +43,7 @@ class TestParseHtml:
         assert amount == 150.00
         assert date == "03/2024"
 
-    def test_parse_key_is_forwarded_to_ml_questions_indirectly(self):
+    def test_html_regex_fallback(self):
         rb = make_read_bill(parse_key="Water")
         html = "<html><body><p>Water</p><p>$75.00</p></body></html>"
         amount = rb._html_regex_fallback(html, parse_key="Water")
@@ -83,19 +83,16 @@ class TestParsePdf:
         total, date = rb._parse_pdf(pdf_bytes)
         assert total == pytest.approx(150.00)
 
-    def test_pdf2image_failure_falls_back_to_whole_document_regex(self):
+    def test_pdf2image_failure_falls_back_to_whole_document_regex(self, monkeypatch):
         rb = make_read_bill()
         pdf_bytes = make_pdf_bytes(["Total: $42.00"])
-        # Simulate convert_from_bytes raising (e.g. poppler missing/corrupt PDF)
-        import bill as bill_module
-        original = bill_module.convert_from_bytes
-        bill_module.convert_from_bytes = MagicMock(side_effect=Exception("poppler error"))
-        try:
-            result = rb._parse_pdf(pdf_bytes)
-        finally:
-            bill_module.convert_from_bytes = original
-        assert isinstance(result[0], float)
+        mock_convert = MagicMock(side_effect=Exception("poppler error")) 
+        monkeypatch.setattr(
+            "bill.convert_from_bytes", mock_convert
+        )
+        result = rb._parse_pdf(pdf_bytes)
         assert result[0] == pytest.approx(42.00)
+        mock_convert.assert_called_once()
 
     def test_handle_none_date(self):
         rb = make_read_bill()
