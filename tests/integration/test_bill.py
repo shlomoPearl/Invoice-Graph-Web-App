@@ -1,4 +1,5 @@
 from io import BytesIO
+import sys
 from unittest.mock import MagicMock
 import pytest
 from reportlab.pdfgen import canvas
@@ -58,6 +59,10 @@ class TestParseHtml:
 
 
 class TestParsePdf:
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="pdf2image needs poppler installed on Windows for this test to run"  
+    )
     def test_single_page_confident_amount_and_date(self):
         rb = make_read_bill()
         rb.ML_model.ask_layoutlm_text.return_value = ml_response(
@@ -92,7 +97,7 @@ class TestParsePdf:
         assert isinstance(result[0], float)
         assert result[0] == pytest.approx(42.00)
 
-    def handle_none_date(self):
+    def test_handle_none_date(self):
         rb = make_read_bill()
         rb.ML_model.ask_layoutlm_text.return_value = ml_response(
             "99.99", 0.9, None, 0.0
