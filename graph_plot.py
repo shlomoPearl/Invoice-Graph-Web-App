@@ -26,6 +26,8 @@ class GraphPlot:
         return fig.to_html(config=config)
 
     def download_by_f(self, format_d: str):
+        if format_d not in ['png', 'pdf']:
+            raise ValueError("Invalid format. Supported formats are: 'png', 'pdf'.")
         dates = self.dates
         values = self.values
         fig, ax = plt.subplots(figsize=(10, 6))

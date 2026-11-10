@@ -43,7 +43,7 @@ os.environ["REDIRECT_URI"] = "http://testserver/oauth2callback"
 for _mod in ("main", "db", "model", "storage"):
     sys.modules.pop(_mod, None)
 
-import main  # noqa: E402
+import main
 
 
 @contextlib.asynccontextmanager
@@ -382,21 +382,7 @@ class TestDownloadGraph:
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/pdf"
 
-    def test_invalid_format_is_unhandled_and_returns_500(self, monkeypatch, client):
-        """
-        NOTE: `download_graph` has no try/except around
-        `graph.download_by_f(format)`. `download_by_f` itself raises for any
-        format matplotlib's `savefig` doesn't recognize (see
-        test_graph_plot.py::test_unsupported_format_raises). Since nothing
-        catches it here, an invalid `?format=` query param would surface to
-        a real client as a generic 500 Internal Server Error in production
-        (uvicorn catches and converts unhandled exceptions to 500). Under
-        TestClient's default settings the same exception instead propagates
-        directly to the test for easier debugging -- so we assert on that
-        propagation here rather than a response object. Not a crash/security
-        issue, but a rough edge for API consumers -- worth adding a
-        validated Literal["png", "pdf"] type or an explicit check instead.
-        """
+    def test_invalid_download_format(self, client):
         set_session_cookie(client, {"bill_dict": {"03/2024": 100.0}})
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(ValueError, match="Invalid format. Supported formats are: 'png', 'pdf'."):
             client.get("/download", params={"format": "bmp"})
