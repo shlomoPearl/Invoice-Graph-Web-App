@@ -37,7 +37,6 @@ class GmailAuth:
         self.service = build("gmail", "v1", credentials=self.creds)
         profile = self.service.users().getProfile(userId="me").execute()
         self.user_email = profile.get("emailAddress")
-
         oauth2_service = build('oauth2', 'v2', credentials=self.creds)
         userinfo = oauth2_service.userinfo().get().execute()
         self.user_id = userinfo["id"]

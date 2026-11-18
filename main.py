@@ -72,10 +72,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> s
 
 @app.get("/", response_class=HTMLResponse)
 async def index_get(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request}
-    )
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.post("/")
@@ -147,10 +144,7 @@ async def auth_callback(request: Request, code: str,
         form_data = request.session.pop("form_data", None)
         if form_data:
             request.session["pending_form_data"] = form_data
-            return templates.TemplateResponse("loading.html", {"request": request})
-
-        # if form_data:
-        #     return await process_flow(request, auth.get_service(), form_data)
+            return templates.TemplateResponse(request, "loading.html")
         return RedirectResponse("/", status_code=303)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OAuth Error: {str(e)}")
@@ -180,14 +174,10 @@ async def process_flow(request: Request, service: build, form_data: dict):
         bill_reader = ReadBill(attachments, form_data["currency"], parse_key=form_data.get("keyword"), range=[form_data["start_date"], form_data["end_date"]])
         bill_dict = bill_reader.parser()
         request.session["bill_dict"] = bill_dict
-        # if I add title option save it in session to
+        # if I add title option save it in session too
         graph = GraphPlot(bill_dict)
         graph_html = graph.get_html_graph()
-        return templates.TemplateResponse(
-            "graph.html", {
-                "request": request,
-                "graph_html": graph_html,
-            })
+        return templates.TemplateResponse( request, "graph.html", {"graph_html": graph_html})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
@@ -207,7 +197,3 @@ def download_graph(request: Request, format: str):
             "Content-Disposition": f"attachment; filename=graph.{format}"
         }
     )
-
-
-
-# app = FastAPI()

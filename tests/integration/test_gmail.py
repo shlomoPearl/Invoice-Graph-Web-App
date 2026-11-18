@@ -3,19 +3,13 @@ from unittest.mock import MagicMock
 import httplib2
 from googleapiclient.errors import HttpError
 from gmail import Gmail
+import pytest
 
 
 def make_service(list_response, get_responses=None, attachment_responses=None):
-    """
-    Build a mocked Gmail API `service` object matching the real chained-call
-    shape: service.users().messages().list(...).execute(),
-    service.users().messages().get(...).execute(), and
-    service.users().messages().attachments().get(...).execute().
-    """
     service = MagicMock()
     messages_mock = service.users.return_value.messages.return_value
     messages_mock.list.return_value.execute.return_value = list_response
-
     get_responses = get_responses or {}
 
     def get_side_effect(userId, id):
@@ -24,7 +18,6 @@ def make_service(list_response, get_responses=None, attachment_responses=None):
         return m
 
     messages_mock.get.side_effect = get_side_effect
-
     attachment_responses = attachment_responses or {}
 
     def attachment_side_effect(userId, messageId, id):
@@ -33,9 +26,7 @@ def make_service(list_response, get_responses=None, attachment_responses=None):
         return m
 
     messages_mock.attachments.return_value.get.side_effect = attachment_side_effect
-
     return service
-
 
 def make_message(msg_id, date_header, parts=None, top_level_mime_type=None, top_level_body=None):
     """Build a fake Gmail API message payload."""
@@ -50,15 +41,12 @@ def make_message(msg_id, date_header, parts=None, top_level_mime_type=None, top_
         payload["body"] = top_level_body
     return {"id": msg_id, "payload": payload}
 
-
 def b64_html_part(html_str):
     encoded = base64.urlsafe_b64encode(html_str.encode("utf-8")).decode("ascii")
     return {"mimeType": "text/html", "body": {"data": encoded}}
 
-
 def pdf_part(filename, attachment_id):
     return {"filename": filename, "body": {"attachmentId": attachment_id}}
-
 
 def b64_attachment_data(raw_bytes):
     return {"data": base64.urlsafe_b64encode(raw_bytes).decode("ascii")}
@@ -68,45 +56,40 @@ class TestQueryConstruction:
     def test_query_includes_sender_address(self):
         service = make_service({"messages": []})
         gmail = Gmail(address="billing@company.com", subject=None,
-                       date_range=["01/03/2024", "15/03/2024"])
+                      date_range=["01/03/2024", "15/03/2024"])
         gmail.search_mail(service)
-
         called_kwargs = service.users.return_value.messages.return_value.list.call_args.kwargs
         assert "from:billing@company.com" in called_kwargs["q"]
 
     def test_query_includes_subject_when_provided(self):
         service = make_service({"messages": []})
         gmail = Gmail(address="billing@company.com", subject="Water Bill",
-                       date_range=["01/03/2024", "15/03/2024"])
+                      date_range=["01/03/2024", "15/03/2024"])
         gmail.search_mail(service)
-
         q = service.users.return_value.messages.return_value.list.call_args.kwargs["q"]
         assert "subject:Water Bill" in q
 
     def test_query_omits_subject_clause_when_none(self):
         service = make_service({"messages": []})
         gmail = Gmail(address="billing@company.com", subject=None,
-                       date_range=["01/03/2024", "15/03/2024"])
+                      date_range=["01/03/2024", "15/03/2024"])
         gmail.search_mail(service)
-
         q = service.users.return_value.messages.return_value.list.call_args.kwargs["q"]
         assert "subject:" not in q
 
     def test_before_date_is_converted_and_incremented(self):
         service = make_service({"messages": []})
         gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "15/03/2024"])
+                      date_range=["01/03/2024", "15/03/2024"])
         gmail.search_mail(service)
-
         q = service.users.return_value.messages.return_value.list.call_args.kwargs["q"]
         assert "before:2024/04/15" in q
 
     def test_after_date_is_converted(self):
         service = make_service({"messages": []})
         gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "15/03/2024"])
+                      date_range=["01/03/2024", "15/03/2024"])
         gmail.search_mail(service)
-
         q = service.users.return_value.messages.return_value.list.call_args.kwargs["q"]
         assert "after:2024/03/01" in q
         assert "after:01/03/2024" not in q
@@ -116,7 +99,6 @@ class TestQueryConstruction:
         gmail = Gmail(address="a@b.com", subject=None, result_num=10,
                        date_range=["01/03/2024", "15/03/2024"])
         gmail.search_mail(service)
-
         called_kwargs = service.users.return_value.messages.return_value.list.call_args.kwargs
         assert called_kwargs["maxResults"] == 10
 
@@ -134,9 +116,8 @@ class TestAttachmentExtraction:
             attachment_responses={"att1": b64_attachment_data(pdf_bytes)},
         )
         gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "31/03/2024"])
+                      date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
         assert result["03/2024"] == [pdf_bytes]
 
     def test_html_part_used_when_no_pdf_attachment(self):
@@ -150,9 +131,8 @@ class TestAttachmentExtraction:
             get_responses={"msg1": msg},
         )
         gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "31/03/2024"])
+                      date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
         assert result["03/2024"] == [html]
 
     def test_pdf_preferred_over_html_when_both_present(self):
@@ -168,9 +148,8 @@ class TestAttachmentExtraction:
             attachment_responses={"att1": b64_attachment_data(pdf_bytes)},
         )
         gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "31/03/2024"])
+                      date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
         assert result["03/2024"] == [pdf_bytes]
 
     def test_single_part_html_message_without_parts_key(self):
@@ -188,7 +167,6 @@ class TestAttachmentExtraction:
         gmail = Gmail(address="a@b.com", subject=None,
                        date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
         assert result["03/2024"] == [html]
 
     def test_message_with_no_matching_content_produces_no_entry(self):
@@ -202,9 +180,8 @@ class TestAttachmentExtraction:
             get_responses={"msg1": msg},
         )
         gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "31/03/2024"])
+                      date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
         assert dict(result) == {}
 
 
@@ -221,7 +198,6 @@ class TestDateGrouping:
         gmail = Gmail(address="a@b.com", subject=None,
                        date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
         assert result["03/2024"] == [html_a, html_b]
 
     def test_messages_in_different_months_produce_separate_keys(self):
@@ -234,9 +210,8 @@ class TestDateGrouping:
             get_responses={"msgA": msg_a, "msgB": msg_b},
         )
         gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "30/04/2024"])
+                      date_range=["01/03/2024", "30/04/2024"])
         result = gmail.search_mail(service)
-
         assert result["03/2024"] == [html_a]
         assert result["04/2024"] == [html_b]
 
@@ -245,7 +220,7 @@ class TestErrorHandlingAndEmptyResults:
     def test_no_messages_returns_empty_dict(self):
         service = make_service({"messages": []})
         gmail = Gmail(address="a@b.com", subject=None,
-                       date_range=["01/03/2024", "31/03/2024"])
+                      date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
         assert dict(result) == {}
 
@@ -256,7 +231,6 @@ class TestErrorHandlingAndEmptyResults:
         gmail = Gmail(address="a@b.com", subject=None,
                        date_range=["01/03/2024", "31/03/2024"])
         result = gmail.search_mail(service)
-
         assert dict(result) == {}
 
     def test_http_error_returns_empty_dict(self):
